@@ -131,7 +131,9 @@ define(function(require) {
     Group.prototype.removeChild = function(child) {
         var idx = util.indexOf(this._children, child);
 
-        this._children.splice(idx, 1);
+        if (idx >= 0) {
+            this._children.splice(idx, 1);
+        }
         child.parent = null;
 
         if (this._storage) {
@@ -142,6 +144,22 @@ define(function(require) {
                 child.delChildrenFromStorage(this._storage);
             }
         }
+    };
+
+    /**
+     * 移除所有子节点
+     */
+    Group.prototype.clearChildren = function () {
+        for (var i = 0; i < this._children.length; i++) {
+            var child = this._children[i];
+            if (this._storage) {
+                this._storage.delFromMap(child.id);
+                if (child instanceof Group) {
+                    child.delChildrenFromStorage(this._storage);
+                }
+            }
+        }
+        this._children.length = 0;
     };
 
     /**
@@ -186,7 +204,7 @@ define(function(require) {
         for (var i = 0; i < this._children.length; i++) {
             var child = this._children[i];
             storage.addToMap(child);
-            if (child.type === 'group') {
+            if (child instanceof Group) {
                 child.addChildrenToStorage(storage);
             }
         }
@@ -196,7 +214,7 @@ define(function(require) {
         for (var i = 0; i < this._children.length; i++) {
             var child = this._children[i];
             storage.delFromMap(child.id);
-            if (child.type === 'group') {
+            if (child instanceof Group) {
                 child.delChildrenFromStorage(storage);
             }
         }

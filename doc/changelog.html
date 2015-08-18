@@ -47,7 +47,7 @@
                 <li class="dropdown">
                   <a href="#" class="dropdown-toggle" data-toggle="dropdown"><i class="icon-download-alt icon-white"></i>Download <b class="caret"></b></a>
                   <ul class="dropdown-menu">
-                    <li><a href="https://github.com/ecomfe/zrender/archive/2.0.6.zip">ZIP (2.0.6)</a></li>
+                    <li><a href="https://github.com/ecomfe/zrender/archive/2.0.8.zip">ZIP (2.0.8)</a></li>
                     <li><a href="https://github.com/ecomfe/zrender/archive/master.zip">ZIP (Latest)</a></li>
                   </ul>
                 </li>
@@ -70,6 +70,49 @@
     <div class="container">
         <h2>修改记录</h2>
         <div class="row-fluid">
+            <div>
+                <h3>2.1.1<small>（2015-6-30）</small></h3>
+                <ul>
+                    <li>Fix events bug which triggered manually.</li>
+                    <li>Fix bug of removing clip in step function</li>
+                </ul>
+            </div>
+            <div>
+                <h3>2.1.0<small>（2015-6-30）</small></h3>
+                <ul>
+                    <li>Elements created by zrender have className 'zr-element'.</li>
+                </ul>
+            </div>
+            <div>
+                <h3>2.0.9<small>（2015-05-27）</small></h3>
+                <ul>
+                    <li>Optimizing animation management.</li>
+                    <li>Add `bind`, `each`, `map`, `filter` utility methods</li>
+                </ul>
+            </div>
+            <div>
+                <h3>2.0.8<small>（2015-03-12）</small></h3>
+                <ul>
+                    <li>Poline bezier points caching.</li>
+                    <li>Stop animation when element is deleted. Avoid memory leak</li>
+                    <li>ZRender instance add addElement, delElement, modElement methods.</li>
+                    <li>Element add, del, mod will force refresh next frame</li>
+                    <li>getTransform method changed to transformCoordToLocal </li>
+                </ul>
+            </div>
+            <div>
+                <h3>2.0.7<small>（2015-01-29）</small></h3>
+                <ul>
+                    <li>Painter support insert custom layer like webgl.</li>
+                    <li>ZRender on bind can pass in context.</li>
+                    <li>Layer iterator, custom layer mouse event.</li>
+                    <li>Add shape bundle.</li>
+                    <li>BrokenLine changed to Polyline, Polygon always closePath.</li>
+                    <li>Group add clearChildren method.</li>
+                    <li>Line text optimize.</li>
+                    <li>Mobile event position fixed.</li>
+                </ul>
+            </div>
             <div>
                 <h3>2.0.6<small>（2014-12-03）</small></h3>
                 <ul>

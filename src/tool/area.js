@@ -50,7 +50,7 @@ define(
 
             _ctx = _ctx || util.getContext();
 
-            // 未实现或不可用时(excanvas不支持)则数学运算，主要是line，brokenLine，ring
+            // 未实现或不可用时(excanvas不支持)则数学运算，主要是line，polyline，ring
             var _mathReturn = _mathMethod(shape, area, x, y);
             if (typeof _mathReturn != 'undefined') {
                 return _mathReturn;
@@ -80,8 +80,6 @@ define(
         }
 
         /**
-         * 用数学方法判断，三个方法中最快，但是支持的shape少
-         *
          * @param {Object} shape : 图形
          * @param {Object} area ：目标区域
          * @param {number} x ： 横坐标
@@ -117,8 +115,8 @@ define(
                         area.lineWidth, x, y
                     );
                 // 折线
-                case 'broken-line':
-                    return isInsideBrokenLine(
+                case 'polyline':
+                    return isInsidePolyline(
                         area.pointList, area.lineWidth, x, y
                     );
                 // 圆环
@@ -147,7 +145,7 @@ define(
                     );
                 // 多边形
                 case 'path':
-                    return isInsidePath(
+                    return area.pathArray && isInsidePath(
                         area.pathArray, Math.max(area.lineWidth, 5),
                         area.brushType, x, y
                     );
@@ -365,7 +363,7 @@ define(
                 || (angle + PI2 >= startAngle && angle + PI2 <= endAngle);
         }
 
-        function isInsideBrokenLine(points, lineWidth, x, y) {
+        function isInsidePolyline(points, lineWidth, x, y) {
             var lineWidth = Math.max(lineWidth, 10);
             for (var i = 0, l = points.length - 1; i < l; i++) {
                 var x0 = points[i][0];
@@ -533,7 +531,7 @@ define(
                     var y_ = curve.quadraticAt(y0, y1, y2, t);
                     for (var i = 0; i < nRoots; i++) {
                         var x_ = curve.quadraticAt(x0, x1, x2, roots[i]);
-                        if (x_ > x) {
+                        if (x_ < x) {
                             continue;
                         }
                         if (roots[i] < t) {
@@ -547,7 +545,7 @@ define(
                 } 
                 else {
                     var x_ = curve.quadraticAt(x0, x1, x2, roots[0]);
-                    if (x_ > x) {
+                    if (x_ < x) {
                         return 0;
                     }
                     return y2 < y0 ? 1 : -1;
@@ -852,7 +850,7 @@ define(
             isInsideCircle: isInsideCircle,
             isInsideLine: isInsideLine,
             isInsideRect: isInsideRect,
-            isInsideBrokenLine: isInsideBrokenLine,
+            isInsidePolyline: isInsidePolyline,
 
             isInsideCubicStroke: isInsideCubicStroke,
             isInsideQuadraticStroke: isInsideQuadraticStroke

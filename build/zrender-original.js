@@ -1340,7 +1340,12 @@ if (!document.createElement('canvas').getContext) {
     }
     var doc = this.element_.ownerDocument;
     this.textMeasureEl_.innerHTML = '';
-    this.textMeasureEl_.style.font = this.font;
+    try {
+        this.textMeasureEl_.style.font = this.font;
+    } catch (ex) {
+        // Ignore failures to set to invalid font.
+    }
+    
     // Don't use innerHTML or innerText because they allow markup/whitespace.
     this.textMeasureEl_.appendChild(doc.createTextNode(text));
     return {width: this.textMeasureEl_.offsetWidth};
@@ -1449,18 +1454,21 @@ else { // make the canvas test simple by kener.linfeng@gmail.com
     G_vmlCanvasManager = false;
 }
 return G_vmlCanvasManager;
-}); // define;
+}); // define
+;
 /**
- * zrender: 公共辅助函数
- *
+ * @module zrender/tool/util
  * @author Kener (@Kener-林峰, kener.linfeng@gmail.com)
- *
- * clone：深度克隆
- * merge：合并源对象的属性到目标对象
- * getContext：获取一个自由使用的canvas 2D context，使用原生方法，如isPointInPath，measureText等
+ *         Yi Shen(https://github.com/pissang)
  */
 define(
     'zrender/tool/util',['require','../dep/excanvas'],function(require) {
+
+        var ArrayProto = Array.prototype;
+        var nativeForEach = ArrayProto.forEach;
+        var nativeMap = ArrayProto.map;
+        var nativeFilter = ArrayProto.filter;
+
         // 用于处理merge时无法遍历Date等对象的问题
         var BUILTIN_OBJECT = {
             '[object Function]': 1,
@@ -1470,11 +1478,18 @@ define(
             '[object CanvasGradient]': 1
         };
 
+        var objToString = Object.prototype.toString;
+
+        function isDom(obj) {
+            return obj && obj.nodeType === 1
+                   && typeof(obj.nodeName) == 'string';
+        }
+
         /**
          * 对一个object进行深度拷贝
-         *
-         * @param {Any} source 需要进行拷贝的对象
-         * @return {Any} 拷贝后的新对象
+         * @memberOf module:zrender/tool/util
+         * @param {*} source 需要进行拷贝的对象
+         * @return {*} 拷贝后的新对象
          */
         function clone(source) {
             if (typeof source == 'object' && source !== null) {
@@ -1485,7 +1500,11 @@ define(
                         result[i] = clone(source[i]);
                     }
                 }
-                else if (!BUILTIN_OBJECT[Object.prototype.toString.call(source)]) {
+                else if (
+                    !BUILTIN_OBJECT[objToString.call(source)]
+                    // 是否为 dom 对象
+                    && !isDom(source)
+                ) {
                     result = {};
                     for (var key in source) {
                         if (source.hasOwnProperty(key)) {
@@ -1502,8 +1521,11 @@ define(
 
         function mergeItem(target, source, key, overwrite) {
             if (source.hasOwnProperty(key)) {
-                if (typeof target[key] == 'object'
-                    && !BUILTIN_OBJECT[ Object.prototype.toString.call(target[key]) ]
+                var targetProp = target[key];
+                if (typeof targetProp == 'object'
+                    && !BUILTIN_OBJECT[objToString.call(targetProp)]
+                    // 是否为 dom 对象
+                    && !isDom(targetProp)
                 ) {
                     // 如果需要递归覆盖，就递归调用merge
                     merge(
@@ -1521,7 +1543,7 @@ define(
 
         /**
          * 合并源对象的属性到目标对象
-         * modify from Tangram
+         * @memberOf module:zrender/tool/util
          * @param {*} target 目标对象
          * @param {*} source 源对象
          * @param {boolean} overwrite 是否覆盖
@@ -1557,82 +1579,10 @@ define(
             return _ctx;
         }
 
-        var _canvas;
-        var _pixelCtx;
-        var _width;
-        var _height;
-        var _offsetX = 0;
-        var _offsetY = 0;
-
         /**
-         * 获取像素拾取专用的上下文
-         * @return {Object} 上下文
-         */
-        function getPixelContext() {
-            if (!_pixelCtx) {
-                _canvas = document.createElement('canvas');
-                _width = _canvas.width;
-                _height = _canvas.height;
-                _pixelCtx = _canvas.getContext('2d');
-            }
-            return _pixelCtx;
-        }
-
-        /**
-         * 如果坐标处在_canvas外部，改变_canvas的大小
-         * @param {number} x : 横坐标
-         * @param {number} y : 纵坐标
-         * 注意 修改canvas的大小 需要重新设置translate
-         */
-        function adjustCanvasSize(x, y) {
-            // 每次加的长度
-            var _v = 100;
-            var _flag;
-
-            if (x + _offsetX > _width) {
-                _width = x + _offsetX + _v;
-                _canvas.width = _width;
-                _flag = true;
-            }
-
-            if (y + _offsetY > _height) {
-                _height = y + _offsetY + _v;
-                _canvas.height = _height;
-                _flag = true;
-            }
-
-            if (x < -_offsetX) {
-                _offsetX = Math.ceil(-x / _v) * _v;
-                _width += _offsetX;
-                _canvas.width = _width;
-                _flag = true;
-            }
-
-            if (y < -_offsetY) {
-                _offsetY = Math.ceil(-y / _v) * _v;
-                _height += _offsetY;
-                _canvas.height = _height;
-                _flag = true;
-            }
-
-            if (_flag) {
-                _pixelCtx.translate(_offsetX, _offsetY);
-            }
-        }
-
-        /**
-         * 获取像素canvas的偏移量
-         * @return {Object} 偏移量
-         */
-        function getPixelOffset() {
-            return {
-                x : _offsetX,
-                y : _offsetY
-            };
-        }
-
-        /**
-         * 查询数组中元素的index
+         * @memberOf module:zrender/tool/util
+         * @param {Array} array
+         * @param {*} value
          */
         function indexOf(array, value) {
             if (array.indexOf) {
@@ -1648,7 +1598,7 @@ define(
 
         /**
          * 构造类继承关系
-         * 
+         * @memberOf module:zrender/tool/util
          * @param {Function} clazz 源类
          * @param {Function} baseClazz 基类
          */
@@ -1664,15 +1614,101 @@ define(
             clazz.constructor = clazz;
         }
 
+        /**
+         * 数组或对象遍历
+         * @memberOf module:zrender/tool/util
+         * @param {Object|Array} obj
+         * @param {Function} cb
+         * @param {*} [context]
+         */
+        function each(obj, cb, context) {
+            if (!(obj && cb)) {
+                return;
+            }
+            if (obj.forEach && obj.forEach === nativeForEach) {
+                obj.forEach(cb, context);
+            }
+            else if (obj.length === +obj.length) {
+                for (var i = 0, len = obj.length; i < len; i++) {
+                    cb.call(context, obj[i], i, obj);
+                }
+            }
+            else {
+                for (var key in obj) {
+                    if (obj.hasOwnProperty(key)) {
+                        cb.call(context, obj[key], key, obj);
+                    }
+                }
+            }
+        }
+
+        /**
+         * 数组映射
+         * @memberOf module:zrender/tool/util
+         * @param {Array} obj
+         * @param {Function} cb
+         * @param {*} [context]
+         * @return {Array}
+         */
+        function map(obj, cb, context) {
+            if (!(obj && cb)) {
+                return;
+            }
+            if (obj.map && obj.map === nativeMap) {
+                return obj.map(cb, context);
+            }
+            else {
+                var result = [];
+                for (var i = 0, len = obj.length; i < len; i++) {
+                    result.push(cb.call(context, obj[i], i, obj));
+                }
+                return result;
+            }
+        }
+
+        /**
+         * 数组过滤
+         * @memberOf module:zrender/tool/util
+         * @param {Array} obj
+         * @param {Function} cb
+         * @param {*} [context]
+         * @return {Array}
+         */
+        function filter(obj, cb, context) {
+            if (!(obj && cb)) {
+                return;
+            }
+            if (obj.filter && obj.filter === nativeFilter) {
+                return obj.filter(cb, context);
+            }
+            else {
+                var result = [];
+                for (var i = 0, len = obj.length; i < len; i++) {
+                    if (cb.call(context, obj[i], i, obj)) {
+                        result.push(obj[i]);
+                    }
+                }
+                return result;
+            }
+        }
+
+        function bind(func, context) {
+            
+            return function () {
+                func.apply(context, arguments);
+            }
+        }
+
         return {
             inherits: inherits,
-            clone : clone,
-            merge : merge,
-            getContext : getContext,
-            getPixelContext : getPixelContext,
-            getPixelOffset : getPixelOffset,
-            adjustCanvasSize : adjustCanvasSize,
-            indexOf : indexOf
+            clone: clone,
+            merge: merge,
+            getContext: getContext,
+            indexOf: indexOf,
+            each: each,
+            map: map,
+            filter: filter,
+            bind: bind
         };
     }
 );
@@ -1778,6 +1814,8 @@ define('zrender/config',[],function () {
             touchClickDelay : 300
         },
 
+        elementClassName: 'zr-element',
+
         // 是否异常捕获
         catchBrushException: false,
 
@@ -1787,7 +1825,10 @@ define('zrender/config',[],function () {
          * 1 : 异常抛出，调试用
          * 2 : 控制台输出，调试用
          */
-        debugMode: 0
+        debugMode: 0,
+
+        // retina 屏幕优化
+        devicePixelRatio: Math.max(window.devicePixelRatio || 1, 1)
     };
     return config;
 });
@@ -1971,7 +2012,7 @@ define('zrender/mixin/Eventful',['require'],function (require) {
      * 绑定事件
      * @param {string} event 事件名
      * @param {Function} handler 事件处理函数
-     * @param {Object} context
+     * @param {Object} [context]
      */
     Eventful.prototype.bind = function (event, handler, context) {
         var _h = this._handlers;
@@ -2298,11 +2339,24 @@ define(
             },
 
             /**
-             * 复制一个向量
-             * @return {Vector2} out
-             * @return {Vector2} v
+             * 复制向量数据
+             * @param {Vector2} out
+             * @param {Vector2} v
+             * @return {Vector2}
              */
             copy: function (out, v) {
+                out[0] = v[0];
+                out[1] = v[1];
+                return out;
+            },
+
+            /**
+             * 克隆一个向量
+             * @param {Vector2} v
+             * @return {Vector2}
+             */
+            clone: function (v) {
+                var out = new ArrayCtor(2);
                 out[0] = v[0];
                 out[1] = v[1];
                 return out;
@@ -2682,26 +2736,6 @@ define(
                 out[4] = (ac * aty - ad * atx) * det;
                 out[5] = (ab * atx - aa * aty) * det;
                 return out;
-            },
-
-            /**
-             * 矩阵左乘向量
-             * @param {Float32Array|Array.<number>} out
-             * @param {Float32Array|Array.<number>} a
-             * @param {Float32Array|Array.<number>} v
-             */
-            mulVector : function(out, a, v) {
-                var aa = a[0];
-                var ac = a[2];
-                var atx = a[4];
-                var ab = a[1];
-                var ad = a[3];
-                var aty = a[5];
-
-                out[0] = v[0] * aa + v[1] * ac + atx;
-                out[1] = v[0] * ab + v[1] * ad + aty;
-
-                return out;
             }
         };
 
@@ -2717,6 +2751,7 @@ define(
  *
  */
 // TODO mouseover 只触发一次
+// 目前的高亮因为每次都需要 addHover 所以不能只是开始的时候触发一次
 define(
     'zrender/Handler',['require','./config','./tool/env','./tool/event','./tool/util','./tool/vector','./tool/matrix','./mixin/Eventful'],function (require) {
 
@@ -2738,6 +2773,23 @@ define(
             'touchstart', 'touchend', 'touchmove'
         ];
 
+        var isZRenderElement = function (event) {
+            // 暂时忽略 IE8-
+            if (window.G_vmlCanvasManager) {
+                return true;
+            }
+
+            event = event || window.event;
+
+            // 进入对象优先~
+            var target = event.toElement
+                          || event.relatedTarget
+                          || event.srcElement
+                          || event.target;
+
+            return target && target.className.match(config.elementClassName)
+        };
+
         var domHandlers = {
             /**
              * 窗口大小改变响应函数
@@ -2758,7 +2810,11 @@ define(
              * @inner
              * @param {Event} event
              */
-            click: function (event) {
+            click: function (event, manually) {
+                if (! isZRenderElement(event) && ! manually) {
+                    return;
+                }
+
                 event = this._zrenderEventFixed(event);
 
                 // 分发config.EVENT.CLICK事件
@@ -2781,7 +2837,11 @@ define(
              * @inner
              * @param {Event} event
              */
-            dblclick: function (event) {
+            dblclick: function (event, manually) {
+                if (! isZRenderElement(event) && ! manually) {
+                    return;
+                }
+
                 event = event || window.event;
                 event = this._zrenderEventFixed(event);
 
@@ -2806,7 +2866,11 @@ define(
              * @inner
              * @param {Event} event
              */
-            mousewheel: function (event) {
+            mousewheel: function (event, manually) {
+                if (! isZRenderElement(event) && ! manually) {
+                    return;
+                }
+
                 event = this._zrenderEventFixed(event);
 
                 // http://www.sitepoint.com/html5-javascript-mouse-wheel/
@@ -2815,36 +2879,34 @@ define(
                             || -event.detail; // Firefox
                 var scale = delta > 0 ? 1.1 : 1 / 1.1;
 
-                var layers = this.painter.getLayers();
-
                 var needsRefresh = false;
-                for (var z in layers) {
-                    if (z !== 'hover') {
-                        var layer = layers[z];
-                        var pos = layer.position;
-                        if (layer.zoomable) {
-                            layer.__zoom = layer.__zoom || 1;
-                            var newZoom = layer.__zoom;
-                            newZoom *= scale;
-                            newZoom = Math.max(
-                                Math.min(layer.maxZoom, newZoom),
-                                layer.minZoom
-                            );
-                            scale = newZoom / layer.__zoom;
-                            layer.__zoom = newZoom;
-                            // Keep the mouse center when scaling
-                            pos[0] -= (this._mouseX - pos[0]) * (scale - 1);
-                            pos[1] -= (this._mouseY - pos[1]) * (scale - 1);
-                            layer.scale[0] *= scale;
-                            layer.scale[1] *= scale;
-                            layer.dirty = true;
-                            needsRefresh = true;
 
-                            // Prevent browser default scroll action 
-                            eventTool.stop(event);
-                        }
+                var mouseX = this._mouseX;
+                var mouseY = this._mouseY;
+                this.painter.eachBuildinLayer(function (layer) {
+                    var pos = layer.position;
+                    if (layer.zoomable) {
+                        layer.__zoom = layer.__zoom || 1;
+                        var newZoom = layer.__zoom;
+                        newZoom *= scale;
+                        newZoom = Math.max(
+                            Math.min(layer.maxZoom, newZoom),
+                            layer.minZoom
+                        );
+                        scale = newZoom / layer.__zoom;
+                        layer.__zoom = newZoom;
+                        // Keep the mouse center when scaling
+                        pos[0] -= (mouseX - pos[0]) * (scale - 1);
+                        pos[1] -= (mouseY - pos[1]) * (scale - 1);
+                        layer.scale[0] *= scale;
+                        layer.scale[1] *= scale;
+                        layer.dirty = true;
+                        needsRefresh = true;
+
+                        // Prevent browser default scroll action 
+                        eventTool.stop(event);
                     }
-                }
+                });
                 if (needsRefresh) {
                     this.painter.refresh();
                 }
@@ -2859,12 +2921,14 @@ define(
              * @inner
              * @param {Event} event
              */
-            mousemove: function (event) {
+            mousemove: function (event, manually) {
+                if (! isZRenderElement(event) && ! manually) {
+                    return;
+                }
+
                 if (this.painter.isLoading()) {
                     return;
                 }
-                // 拖拽不触发click事件
-                this._clickThreshold++;
 
                 event = this._zrenderEventFixed(event);
                 this._lastX = this._mouseX;
@@ -2910,26 +2974,24 @@ define(
                     this.storage.drift(this._draggingTarget.id, dx, dy);
                     this._draggingTarget.modSelf();
                     this.storage.addHover(this._draggingTarget);
+
+                    // 拖拽不触发click事件
+                    this._clickThreshold++;
                 }
                 else if (this._isMouseDown) {
-                    // Layer dragging
-                    var layers = this.painter.getLayers();
-
                     var needsRefresh = false;
-                    for (var z in layers) {
-                        if (z !== 'hover') {
-                            var layer = layers[z];
-                            if (layer.panable) {
-                                // PENDING
-                                cursor = 'move';
-                                // Keep the mouse center when scaling
-                                layer.position[0] += dx;
-                                layer.position[1] += dy;
-                                needsRefresh = true;
-                                layer.dirty = true;
-                            }
+                    // Layer dragging
+                    this.painter.eachBuildinLayer(function (layer) {
+                        if (layer.panable) {
+                            // PENDING
+                            cursor = 'move';
+                            // Keep the mouse center when scaling
+                            layer.position[0] += dx;
+                            layer.position[1] += dy;
+                            needsRefresh = true;
+                            layer.dirty = true;
                         }
-                    }
+                    });
                     if (needsRefresh) {
                         this.painter.refresh();
                     }
@@ -2956,7 +3018,11 @@ define(
              * @inner
              * @param {Event} event
              */
-            mouseout: function (event) {
+            mouseout: function (event, manually) {
+                if (! isZRenderElement(event) && ! manually) {
+                    return;
+                }
+
                 event = this._zrenderEventFixed(event);
 
                 var element = event.toElement || event.relatedTarget;
@@ -2992,7 +3058,11 @@ define(
              * @inner
              * @param {Event} event
              */
-            mousedown: function (event) {
+            mousedown: function (event, manually) {
+                if (! isZRenderElement(event) && ! manually) {
+                    return;
+                }
+
                 // 重置 clickThreshold
                 this._clickThreshold = 0;
 
@@ -3018,11 +3088,14 @@ define(
              * @inner
              * @param {Event} event
              */
-            mouseup: function (event) {
+            mouseup: function (event, manually) {
+                if (! isZRenderElement(event) && ! manually) {
+                    return;
+                }
+
                 event = this._zrenderEventFixed(event);
                 this.root.style.cursor = 'default';
                 this._isMouseDown = 0;
-                this._clickThreshold = 0;
                 this._mouseDownTarget = null;
 
                 // 分发config.EVENT.MOUSEUP事件
@@ -3036,13 +3109,17 @@ define(
              * @inner
              * @param {Event} event
              */
-            touchstart: function (event) {
+            touchstart: function (event, manually) {
+                if (! isZRenderElement(event) && ! manually) {
+                    return;
+                }
+
                 // eventTool.stop(event);// 阻止浏览器默认事件，重要
                 event = this._zrenderEventFixed(event, true);
                 this._lastTouchMoment = new Date();
 
                 // 平板补充一次findHover
-                this._mobildFindFixed(event);
+                this._mobileFindFixed(event);
                 this._mousedownHandler(event);
             },
 
@@ -3051,7 +3128,11 @@ define(
              * @inner
              * @param {Event} event
              */
-            touchmove: function (event) {
+            touchmove: function (event, manually) {
+                if (! isZRenderElement(event) && ! manually) {
+                    return;
+                }
+
                 event = this._zrenderEventFixed(event, true);
                 this._mousemoveHandler(event);
                 if (this._isDragging) {
@@ -3064,14 +3145,18 @@ define(
              * @inner
              * @param {Event} event
              */
-            touchend: function (event) {
+            touchend: function (event, manually) {
+                if (! isZRenderElement(event) && ! manually) {
+                    return;
+                }
+
                 // eventTool.stop(event);// 阻止浏览器默认事件，重要
                 event = this._zrenderEventFixed(event, true);
                 this._mouseupHandler(event);
                 
                 var now = new Date();
                 if (now - this._lastTouchMoment < EVENT.touchClickDelay) {
-                    this._mobildFindFixed(event);
+                    this._mobileFindFixed(event);
                     this._clickHandler(event);
                     if (now - this._lastClickMoment < EVENT.touchClickDelay / 2) {
                         this._dblclickHandler(event);
@@ -3093,16 +3178,16 @@ define(
          * @param {Object} context 运行时this环境
          * @return {Function}
          */
-        function bind1Arg(handler, context) {
-            return function (e) {
-                return handler.call(context, e);
-            };
-        }
-        /**function bind2Arg(handler, context) {
+        // function bind1Arg(handler, context) {
+        //     return function (e) {
+        //         return handler.call(context, e);
+        //     };
+        // }
+        function bind2Arg(handler, context) {
             return function (arg1, arg2) {
                 return handler.call(context, arg1, arg2);
             };
-        }*/
+        }
 
         function bind3Arg(handler, context) {
             return function (arg1, arg2, arg3) {
@@ -3119,7 +3204,7 @@ define(
             var len = domHandlerNames.length;
             while (len--) {
                 var name = domHandlerNames[len];
-                instance['_' + name + 'Handler'] = bind1Arg(domHandlers[name], instance);
+                instance['_' + name + 'Handler'] = bind2Arg(domHandlers[name], instance);
             }
         }
 
@@ -3199,9 +3284,10 @@ define(
          * 自定义事件绑定
          * @param {string} eventName 事件名称，resize，hover，drag，etc~
          * @param {Function} handler 响应函数
+         * @param {Object} [context] 响应函数
          */
-        Handler.prototype.on = function (eventName, handler) {
-            this.bind(eventName, handler);
+        Handler.prototype.on = function (eventName, handler, context) {
+            this.bind(eventName, handler, context);
             return this;
         };
 
@@ -3230,7 +3316,7 @@ define(
                 case EVENT.MOUSEDOWN:
                 case EVENT.MOUSEUP:
                 case EVENT.MOUSEOUT:
-                    this['_' + eventName + 'Handler'](eventArgs);
+                    this['_' + eventName + 'Handler'](eventArgs, true);
                     break;
             }
         };
@@ -3485,9 +3571,19 @@ define(
             }
             else if (!draggedShape) {
                 // 无hover目标，无拖拽对象，原生事件分发
-                this.dispatch(eventName, {
+                var eveObj = {
                     type: eventName,
                     event: event
+                };
+                this.dispatch(eventName, eveObj);
+                // 分发事件到用户自定义层
+                this.painter.eachOtherLayer(function (layer) {
+                    if (typeof(layer[eventHandler]) == 'function') {
+                        layer[eventHandler](eveObj);
+                    }
+                    if (layer.dispatch) {
+                        layer.dispatch(eventName, eveObj);
+                    }
                 });
             }
         };
@@ -3534,7 +3630,7 @@ define(
         ];
 
         // touch有指尖错觉，四向尝试，让touch上的点击更好触发事件
-        Handler.prototype._mobildFindFixed = function (event) {
+        Handler.prototype._mobileFindFixed = function (event) {
             this._lastHover = null;
             this._mouseX = event.zrenderX;
             this._mouseY = event.zrenderY;
@@ -3542,11 +3638,10 @@ define(
             this._event = event;
 
             this._iterateAndFindHover();
-
             for (var i = 0; !this._lastHover && i < MOBILE_TOUCH_OFFSETS.length ; i++) {
                 var offset = MOBILE_TOUCH_OFFSETS[ i ];
                 offset.x && (this._mouseX += offset.x);
-                offset.y && (this._mouseX += offset.y);
+                offset.y && (this._mouseY += offset.y);
 
                 this._iterateAndFindHover();
             }
@@ -3647,7 +3742,7 @@ define(
                                 ? event.targetTouches[0]
                                 : event.changedTouches[0];
                 if (touch) {
-                    var rBounding = this.root.getBoundingClientRect();
+                    var rBounding = this.painter._domRoot.getBoundingClientRect();
                     // touch事件坐标是全屏的~
                     event.zrenderX = touch.clientX - rBounding.left;
                     event.zrenderY = touch.clientY - rBounding.top;
@@ -3762,7 +3857,7 @@ define('zrender/tool/curve',['require','./vector'],function(require) {
             }
             else {
                 var t1 = -c / b;  //t1, t2, t3, b is not zero
-                if (t1 >=0 && t1 <= 1) {
+                if (t1 >= 0 && t1 <= 1) {
                     roots[n++] = t1;
                 }
             }
@@ -4073,6 +4168,31 @@ define('zrender/tool/curve',['require','./vector'],function(require) {
     }
 
     /**
+     * 细分二次贝塞尔曲线
+     * @memberOf module:zrender/tool/curve
+     * @param  {number} p0
+     * @param  {number} p1
+     * @param  {number} p2
+     * @param  {number} t
+     * @param  {Array.<number>} out
+     */
+    function quadraticSubdivide(p0, p1, p2, t, out) {
+        var p01 = (p1 - p0) * t + p0;
+        var p12 = (p2 - p1) * t + p1;
+        var p012 = (p12 - p01) * t + p01;
+
+        // Seg0
+        out[0] = p0;
+        out[1] = p01;
+        out[2] = p012;
+
+        // Seg1
+        out[3] = p012;
+        out[4] = p12;
+        out[5] = p2;
+    }
+
+    /**
      * 投射点到二次贝塞尔曲线上，返回投射距离。
      * 投射点有可能会有一个或者多个，这里只返回其中距离最短的一个。
      * @param {number} x0
@@ -4173,6 +4293,8 @@ define('zrender/tool/curve',['require','./vector'],function(require) {
 
         quadraticExtremum: quadraticExtremum,
 
+        quadraticSubdivide: quadraticSubdivide,
+
         quadraticProjectPoint: quadraticProjectPoint
     };
 });
@@ -4228,7 +4350,7 @@ define(
 
             _ctx = _ctx || util.getContext();
 
-            // 未实现或不可用时(excanvas不支持)则数学运算，主要是line，brokenLine，ring
+            // 未实现或不可用时(excanvas不支持)则数学运算，主要是line，polyline，ring
             var _mathReturn = _mathMethod(shape, area, x, y);
             if (typeof _mathReturn != 'undefined') {
                 return _mathReturn;
@@ -4258,8 +4380,6 @@ define(
         }
 
         /**
-         * 用数学方法判断，三个方法中最快，但是支持的shape少
-         *
          * @param {Object} shape : 图形
          * @param {Object} area ：目标区域
          * @param {number} x ： 横坐标
@@ -4295,8 +4415,8 @@ define(
                         area.lineWidth, x, y
                     );
                 // 折线
-                case 'broken-line':
-                    return isInsideBrokenLine(
+                case 'polyline':
+                    return isInsidePolyline(
                         area.pointList, area.lineWidth, x, y
                     );
                 // 圆环
@@ -4325,7 +4445,7 @@ define(
                     );
                 // 多边形
                 case 'path':
-                    return isInsidePath(
+                    return area.pathArray && isInsidePath(
                         area.pathArray, Math.max(area.lineWidth, 5),
                         area.brushType, x, y
                     );
@@ -4543,7 +4663,7 @@ define(
                 || (angle + PI2 >= startAngle && angle + PI2 <= endAngle);
         }
 
-        function isInsideBrokenLine(points, lineWidth, x, y) {
+        function isInsidePolyline(points, lineWidth, x, y) {
             var lineWidth = Math.max(lineWidth, 10);
             for (var i = 0, l = points.length - 1; i < l; i++) {
                 var x0 = points[i][0];
@@ -4711,7 +4831,7 @@ define(
                     var y_ = curve.quadraticAt(y0, y1, y2, t);
                     for (var i = 0; i < nRoots; i++) {
                         var x_ = curve.quadraticAt(x0, x1, x2, roots[i]);
-                        if (x_ > x) {
+                        if (x_ < x) {
                             continue;
                         }
                         if (roots[i] < t) {
@@ -4725,7 +4845,7 @@ define(
                 } 
                 else {
                     var x_ = curve.quadraticAt(x0, x1, x2, roots[0]);
-                    if (x_ > x) {
+                    if (x_ < x) {
                         return 0;
                     }
                     return y2 < y0 ? 1 : -1;
@@ -5030,7 +5150,7 @@ define(
             isInsideCircle: isInsideCircle,
             isInsideLine: isInsideLine,
             isInsideRect: isInsideRect,
-            isInsideBrokenLine: isInsideBrokenLine,
+            isInsidePolyline: isInsidePolyline,
 
             isInsideCubicStroke: isInsideCubicStroke,
             isInsideQuadraticStroke: isInsideQuadraticStroke
@@ -5049,7 +5169,9 @@ define('zrender/mixin/Transformable',['require','../tool/matrix','../tool/vector
 
     var matrix = require('../tool/matrix');
     var vector = require('../tool/vector');
-    var origin = [ 0, 0 ];
+    var origin = [0, 0];
+
+    var mTranslate = matrix.translate;
 
     var EPSILON = 5e-5;
 
@@ -5121,12 +5243,8 @@ define('zrender/mixin/Transformable',['require','../tool/matrix','../tool/vector
             
             this.updateNeedTransform();
 
-            if (this.parent) {
-                this.needTransform = this.needLocalTransform || this.parent.needTransform;
-            }
-            else {
-                this.needTransform = this.needLocalTransform;
-            }
+            var parentHasTransform = this.parent && this.parent.needTransform;
+            this.needTransform = this.needLocalTransform || parentHasTransform;
             
             if (!this.needTransform) {
                 return;
@@ -5136,26 +5254,23 @@ define('zrender/mixin/Transformable',['require','../tool/matrix','../tool/vector
             matrix.identity(m);
 
             if (this.needLocalTransform) {
+                var scale = this.scale;
                 if (
-                    isNotAroundZero(this.scale[0])
-                 || isNotAroundZero(this.scale[1])
+                    isNotAroundZero(scale[0])
+                 || isNotAroundZero(scale[1])
                 ) {
-                    origin[0] = -this.scale[2] || 0;
-                    origin[1] = -this.scale[3] || 0;
+                    origin[0] = -scale[2] || 0;
+                    origin[1] = -scale[3] || 0;
                     var haveOrigin = isNotAroundZero(origin[0])
                                   || isNotAroundZero(origin[1]);
                     if (haveOrigin) {
-                        matrix.translate(
-                            m, m, origin
-                        );
+                        mTranslate(m, m, origin);
                     }
-                    matrix.scale(m, m, this.scale);
+                    matrix.scale(m, m, scale);
                     if (haveOrigin) {
                         origin[0] = -origin[0];
                         origin[1] = -origin[1];
-                        matrix.translate(
-                            m, m, origin
-                        );
+                        mTranslate(m, m, origin);
                     }
                 }
 
@@ -5166,17 +5281,13 @@ define('zrender/mixin/Transformable',['require','../tool/matrix','../tool/vector
                         var haveOrigin = isNotAroundZero(origin[0])
                                       || isNotAroundZero(origin[1]);
                         if (haveOrigin) {
-                            matrix.translate(
-                                m, m, origin
-                            );
+                            mTranslate(m, m, origin);
                         }
                         matrix.rotate(m, m, this.rotation[0]);
                         if (haveOrigin) {
                             origin[0] = -origin[0];
                             origin[1] = -origin[1];
-                            matrix.translate(
-                                m, m, origin
-                            );
+                            mTranslate(m, m, origin);
                         }
                     }
                 }
@@ -5189,22 +5300,24 @@ define('zrender/mixin/Transformable',['require','../tool/matrix','../tool/vector
                 if (
                     isNotAroundZero(this.position[0]) || isNotAroundZero(this.position[1])
                 ) {
-                    matrix.translate(m, m, this.position);
+                    mTranslate(m, m, this.position);
                 }
             }
 
+            // 应用父节点变换
+            if (parentHasTransform) {
+                if (this.needLocalTransform) {
+                    matrix.mul(m, this.parent.transform, m);
+                }
+                else {
+                    matrix.copy(m, this.parent.transform);
+                }
+            }
             // 保存这个变换矩阵
             this.transform = m;
 
-            // 应用父节点变换
-            if (this.parent && this.parent.needTransform) {
-                if (this.needLocalTransform) {
-                    matrix.mul(this.transform, this.parent.transform, this.transform);
-                }
-                else {
-                    matrix.copy(this.transform, this.parent.transform);
-                }
-            }
+            this.invTransform = this.invTransform || matrix.create();
+            matrix.invert(this.invTransform, m);
         },
         /**
          * 将自己的transform应用到context上
@@ -5213,11 +5326,7 @@ define('zrender/mixin/Transformable',['require','../tool/matrix','../tool/vector
         setTransform: function (ctx) {
             if (this.needTransform) {
                 var m = this.transform;
-                ctx.transform(
-                    m[0], m[1],
-                    m[2], m[3],
-                    m[4], m[5]
-                );
+                ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
             }
         },
         /**
@@ -5237,13 +5346,14 @@ define('zrender/mixin/Transformable',['require','../tool/matrix','../tool/vector
                     return;
                 }
                 vector.normalize(v, v);
+                var scale = this.scale;
                 // Y Axis
                 // TODO Scale origin ?
-                m[2] = v[0] * this.scale[1];
-                m[3] = v[1] * this.scale[1];
+                m[2] = v[0] * scale[1];
+                m[3] = v[1] * scale[1];
                 // X Axis
-                m[0] = v[1] * this.scale[0];
-                m[1] = -v[0] * this.scale[0];
+                m[0] = v[1] * scale[0];
+                m[1] = -v[0] * scale[0];
                 // Position
                 m[4] = this.position[0];
                 m[5] = this.position[1];
@@ -5277,6 +5387,21 @@ define('zrender/mixin/Transformable',['require','../tool/matrix','../tool/vector
             scale[2] = scale[3] = 0;
             rotation[0] = Math.atan2(-m[1] / sy, m[0] / sx);
             rotation[1] = rotation[2] = 0;
+        },
+
+        /**
+         * 变换坐标位置到 shape 的局部坐标空间
+         * @method
+         * @param {number} x
+         * @param {number} y
+         * @return {Array.<number>}
+         */
+        transformCoordToLocal: function (x, y) {
+            var v2 = [x, y];
+            if (this.needTransform && this.invTransform) {
+                vector.applyTransform(v2, v2, this.invTransform);
+            }
+            return v2;
         }
     };
 
@@ -6795,34 +6920,6 @@ define(
         };
 
         /**
-         * 变换鼠标位置到 shape 的局部坐标空间
-         * @method
-         * @param {number} x
-         * @param {number} y
-         * @return {Array.<number>}
-         */
-        Base.prototype.getTansform = (function() {
-            
-            var invTransform = [];
-
-            return function (x, y) {
-                var originPos = [ x, y ];
-                // 对鼠标的坐标也做相同的变换
-                if (this.needTransform && this.transform) {
-                    matrix.invert(invTransform, this.transform);
-
-                    matrix.mulVector(originPos, invTransform, [ x, y, 1 ]);
-
-                    if (x == originPos[0] && y == originPos[1]) {
-                        // 避免外部修改导致的needTransform不准确
-                        this.updateNeedTransform();
-                    }
-                }
-                return originPos;
-            };
-        })();
-
-        /**
          * 构建绘制的Path
          * @param {CanvasRenderingContext2D} ctx
          * @param {module:zrender/shape/Base~IBaseShapeStyle} style
@@ -6847,26 +6944,29 @@ define(
          * @return {boolean}
          */
         Base.prototype.isCover = function (x, y) {
-            var originPos = this.getTansform(x, y);
+            var originPos = this.transformCoordToLocal(x, y);
             x = originPos[0];
             y = originPos[1];
 
             // 快速预判并保留判断矩形
-            var rect = this.style.__rect;
-            if (!rect) {
-                rect = this.style.__rect = this.getRect(this.style);
-            }
-
-            if (x >= rect.x
-                && x <= (rect.x + rect.width)
-                && y >= rect.y
-                && y <= (rect.y + rect.height)
-            ) {
+            if (this.isCoverRect(x, y)) {
                 // 矩形内
                 return require('../tool/area').isInside(this, this.style, x, y);
             }
             
             return false;
+        };
+
+        Base.prototype.isCoverRect = function (x, y) {
+            // 快速预判并保留判断矩形
+            var rect = this.style.__rect;
+            if (!rect) {
+                rect = this.style.__rect = this.getRect(this.style);
+            }
+            return x >= rect.x
+                && x <= (rect.x + rect.width)
+                && y >= rect.y
+                && y <= (rect.y + rect.height);
         };
 
         /**
@@ -6945,66 +7045,65 @@ define(
                     break;
                 case 'start':
                 case 'end':
+                    var pointList = style.pointList
+                                    || [
+                                        [style.xStart || 0, style.yStart || 0],
+                                        [style.xEnd || 0, style.yEnd || 0]
+                                    ];
+                    var length = pointList.length;
+                    if (length < 2) {
+                        // 少于2个点就不画了~
+                        return;
+                    }
                     var xStart;
                     var xEnd;
                     var yStart;
                     var yEnd;
-                    if (typeof style.pointList != 'undefined') {
-                        var pointList = style.pointList;
-                        if (pointList.length < 2) {
-                            // 少于2个点就不画了~
-                            return;
-                        }
-                        var length = pointList.length;
-                        switch (textPosition) {
-                            case 'start':
-                                xStart = pointList[0][0];
-                                xEnd = pointList[1][0];
-                                yStart = pointList[0][1];
-                                yEnd = pointList[1][1];
-                                break;
-                            case 'end':
-                                xStart = pointList[length - 2][0];
-                                xEnd = pointList[length - 1][0];
-                                yStart = pointList[length - 2][1];
-                                yEnd = pointList[length - 1][1];
-                                break;
-                        }
-                    }
-                    else {
-                        xStart = style.xStart || 0;
-                        xEnd = style.xEnd || 0;
-                        yStart = style.yStart || 0;
-                        yEnd = style.yEnd || 0;
-                    }
-
                     switch (textPosition) {
                         case 'start':
-                            al = xStart < xEnd ? 'end' : 'start';
-                            bl = yStart < yEnd ? 'bottom' : 'top';
-                            tx = xStart;
-                            ty = yStart;
+                            xStart = pointList[1][0];
+                            xEnd = pointList[0][0];
+                            yStart = pointList[1][1];
+                            yEnd = pointList[0][1];
                             break;
                         case 'end':
-                            al = xStart < xEnd ? 'start' : 'end';
-                            bl = yStart < yEnd ? 'top' : 'bottom';
-                            tx = xEnd;
-                            ty = yEnd;
+                            xStart = pointList[length - 2][0];
+                            xEnd = pointList[length - 1][0];
+                            yStart = pointList[length - 2][1];
+                            yEnd = pointList[length - 1][1];
                             break;
                     }
-                    dd -= 4;
-                    if (xStart != xEnd) {
-                        tx -= (al == 'end' ? dd : -dd);
-                    } 
-                    else {
-                        al = 'center';
+                    tx = xEnd;
+                    ty = yEnd;
+                    
+                    var angle = Math.atan((yStart - yEnd) / (xEnd - xStart)) / Math.PI * 180;
+                    if ((xEnd - xStart) < 0) {
+                        angle += 180;
                     }
-
-                    if (yStart != yEnd) {
-                        ty -= (bl == 'bottom' ? dd : -dd);
-                    } 
-                    else {
+                    else if ((yStart - yEnd) < 0) {
+                        angle += 360;
+                    }
+                    
+                    dd = 5;
+                    if (angle >= 30 && angle <= 150) {
+                        al = 'center';
+                        bl = 'bottom';
+                        ty -= dd;
+                    }
+                    else if (angle > 150 && angle < 210) {
+                        al = 'right';
                         bl = 'middle';
+                        tx -= dd;
+                    }
+                    else if (angle >= 210 && angle <= 330) {
+                        al = 'center';
+                        bl = 'top';
+                        ty += dd;
+                    }
+                    else {
+                        al = 'left';
+                        bl = 'middle';
+                        tx += dd;
                     }
                     break;
                 case 'specific':
@@ -7082,8 +7181,7 @@ define(
  * @property {string} text 文本内容
  * @property {number} [maxWidth=null] 最大宽度限制
  * @property {string} [textFont] 附加文本样式，eg:'bold 18px verdana'
- * @property {string} [textAlign] 默认根据textPosition自动设置，附加文本水平对齐。
- *                                可以是start, end, left, right, center
+ * @property {string} [textAlign] 可以是start, end, left, right, center
  * @property {string} [textBaseline] 默认根据textPosition自动设置，附加文本垂直对齐。
  *                                可以是top, bottom, middle, alphabetic, hanging, ideographic
  * @property {string} [brushType='fill']
@@ -7640,6 +7738,220 @@ define(
 );
 
 /**
+ * @module zrender/Layer
+ * @author pissang(https://www.github.com/pissang)
+ */
+define('zrender/Layer',['require','./mixin/Transformable','./tool/util','./config'],function (require) {
+
+    var Transformable = require('./mixin/Transformable');
+    var util = require('./tool/util');
+    var vmlCanvasManager = window['G_vmlCanvasManager'];
+    var config = require('./config');
+
+    function returnFalse() {
+        return false;
+    }
+
+    /**
+     * 创建dom
+     * 
+     * @inner
+     * @param {string} id dom id 待用
+     * @param {string} type dom type，such as canvas, div etc.
+     * @param {Painter} painter painter instance
+     */
+    function createDom(id, type, painter) {
+        var newDom = document.createElement(type);
+        var width = painter.getWidth();
+        var height = painter.getHeight();
+
+        // 没append呢，请原谅我这样写，清晰~
+        newDom.style.position = 'absolute';
+        newDom.style.left = 0;
+        newDom.style.top = 0;
+        newDom.style.width = width + 'px';
+        newDom.style.height = height + 'px';
+        newDom.width = width * config.devicePixelRatio;
+        newDom.height = height * config.devicePixelRatio;
+
+        // id不作为索引用，避免可能造成的重名，定义为私有属性
+        newDom.setAttribute('data-zr-dom-id', id);
+        return newDom;
+    }
+
+    /**
+     * @alias module:zrender/Layer
+     * @constructor
+     * @extends module:zrender/mixin/Transformable
+     * @param {string} id
+     * @param {module:zrender/Painter} painter
+     */
+    var Layer = function(id, painter) {
+
+        this.id = id;
+
+        this.dom = createDom(id, 'canvas', painter);
+        this.dom.onselectstart = returnFalse; // 避免页面选中的尴尬
+        this.dom.style['-webkit-user-select'] = 'none';
+        this.dom.style['user-select'] = 'none';
+        this.dom.style['-webkit-touch-callout'] = 'none';
+        this.dom.style['-webkit-tap-highlight-color'] = 'rgba(0,0,0,0)';
+
+        this.dom.className = config.elementClassName;
+
+        vmlCanvasManager && vmlCanvasManager.initElement(this.dom);
+
+        this.domBack = null;
+        this.ctxBack = null;
+
+        this.painter = painter;
+
+        this.unusedCount = 0;
+
+        this.config = null;
+
+        this.dirty = true;
+
+        this.elCount = 0;
+
+        // Configs
+        /**
+         * 每次清空画布的颜色
+         * @type {string}
+         * @default 0
+         */
+        this.clearColor = 0;
+        /**
+         * 是否开启动态模糊
+         * @type {boolean}
+         * @default false
+         */
+        this.motionBlur = false;
+        /**
+         * 在开启动态模糊的时候使用，与上一帧混合的alpha值，值越大尾迹越明显
+         * @type {number}
+         * @default 0.7
+         */
+        this.lastFrameAlpha = 0.7;
+        /**
+         * 层是否支持鼠标平移操作
+         * @type {boolean}
+         * @default false
+         */
+        this.zoomable = false;
+        /**
+         * 层是否支持鼠标缩放操作
+         * @type {boolean}
+         * @default false
+         */
+        this.panable = false;
+
+        this.maxZoom = Infinity;
+        this.minZoom = 0;
+
+        Transformable.call(this);
+    };
+
+    Layer.prototype.initContext = function () {
+        this.ctx = this.dom.getContext('2d');
+
+        var dpr = config.devicePixelRatio;
+        if (dpr != 1) { 
+            this.ctx.scale(dpr, dpr);
+        }
+    };
+
+    Layer.prototype.createBackBuffer = function () {
+        if (vmlCanvasManager) { // IE 8- should not support back buffer
+            return;
+        }
+        this.domBack = createDom('back-' + this.id, 'canvas', this.painter);
+        this.ctxBack = this.domBack.getContext('2d');
+
+        var dpr = config.devicePixelRatio;
+
+        if (dpr != 1) { 
+            this.ctxBack.scale(dpr, dpr);
+        }
+    };
+
+    /**
+     * @param  {number} width
+     * @param  {number} height
+     */
+    Layer.prototype.resize = function (width, height) {
+        var dpr = config.devicePixelRatio;
+
+        this.dom.style.width = width + 'px';
+        this.dom.style.height = height + 'px';
+
+        this.dom.setAttribute('width', width * dpr);
+        this.dom.setAttribute('height', height * dpr);
+
+        if (dpr != 1) { 
+            this.ctx.scale(dpr, dpr);
+        }
+
+        if (this.domBack) {
+            this.domBack.setAttribute('width', width * dpr);
+            this.domBack.setAttribute('height', height * dpr);
+
+            if (dpr != 1) { 
+                this.ctxBack.scale(dpr, dpr);
+            }
+        }
+    };
+
+    /**
+     * 清空该层画布
+     */
+    Layer.prototype.clear = function () {
+        var dom = this.dom;
+        var ctx = this.ctx;
+        var width = dom.width;
+        var height = dom.height;
+
+        var haveClearColor = this.clearColor && !vmlCanvasManager;
+        var haveMotionBLur = this.motionBlur && !vmlCanvasManager;
+        var lastFrameAlpha = this.lastFrameAlpha;
+        
+        var dpr = config.devicePixelRatio;
+
+        if (haveMotionBLur) {
+            if (!this.domBack) {
+                this.createBackBuffer();
+            } 
+
+            this.ctxBack.globalCompositeOperation = 'copy';
+            this.ctxBack.drawImage(
+                dom, 0, 0,
+                width / dpr,
+                height / dpr
+            );
+        }
+
+        ctx.clearRect(0, 0, width / dpr, height / dpr);
+        if (haveClearColor) {
+            ctx.save();
+            ctx.fillStyle = this.clearColor;
+            ctx.fillRect(0, 0, width / dpr, height / dpr);
+            ctx.restore();
+        }
+
+        if (haveMotionBLur) {
+            var domBack = this.domBack;
+            ctx.save();
+            ctx.globalAlpha = lastFrameAlpha;
+            ctx.drawImage(domBack, 0, 0, width / dpr, height / dpr);
+            ctx.restore();
+        }
+    };
+
+    util.merge(Layer.prototype, Transformable.prototype);
+
+    return Layer;
+});
+/**
  * 图片绘制
  * @module zrender/shape/Image
  * @author pissang(https://www.github.com/pissang)
@@ -7849,23 +8161,18 @@ define(
  *         pissang (https://www.github.com/pissang)
  */
  define(
-    'zrender/Painter',['require','./config','./tool/util','./tool/log','./tool/matrix','./loadingEffect/Base','./mixin/Transformable','./shape/Image'],function (require) {
+    'zrender/Painter',['require','./config','./tool/util','./tool/log','./loadingEffect/Base','./Layer','./shape/Image'],function (require) {
         
 
         var config = require('./config');
         var util = require('./tool/util');
         // var vec2 = require('./tool/vector');
         var log = require('./tool/log');
-        var matrix = require('./tool/matrix');
+        // var matrix = require('./tool/matrix');
         var BaseLoadingEffect = require('./loadingEffect/Base');
-        var Transformable = require('./mixin/Transformable');
 
-        // retina 屏幕优化
-        var devicePixelRatio = window.devicePixelRatio || 1;
-        devicePixelRatio = Math.max(devicePixelRatio, 1);
-        var vmlCanvasManager = window['G_vmlCanvasManager'];
+        var Layer = require('./Layer');
 
-        
         // 返回false的方法，用于避免页面被选中
         function returnFalse() {
             return false;
@@ -7873,6 +8180,24 @@ define(
 
         // 什么都不干的空方法
         function doNothing() {}
+
+        function isLayerValid(layer) {
+            if (!layer) {
+                return false;
+            }
+            
+            if (layer.isBuildin) {
+                return true;
+            }
+
+            if (typeof(layer.resize) !== 'function'
+                || typeof(layer.refresh) !== 'function'
+            ) {
+                return false;
+            }
+
+            return true;
+        }
 
         /**
          * @alias module:zrender/Painter
@@ -7886,6 +8211,11 @@ define(
              * @type {HTMLElement}
              */
             this.root = root;
+            root.style['-webkit-tap-highlight-color'] = 'transparent';
+            root.style['-webkit-user-select'] = 'none';
+            root.style['user-select'] = 'none';
+            root.style['-webkit-touch-callout'] = 'none';
+
             /**
              * @type {module:zrender/Storage}
              */
@@ -7916,12 +8246,18 @@ define(
 
             // 创建各层canvas
             // 背景
-            this._bgDom = createDom('bg', 'div', this);
+            this._bgDom = document.createElement('div');
+            this._bgDom.style.cssText = [
+                'position:absolute;left:0px;top:0px;width:',
+                this._width, 'px;height:', this._height + 'px;', 
+                '-webkit-user-select:none;user-select;none;',
+                '-webkit-touch-callout:none;'
+            ].join('');
+            this._bgDom.setAttribute('data-zr-dom-id', 'bg');
+            this._bgDom.className = config.elementClassName;
+
             domRoot.appendChild(this._bgDom);
             this._bgDom.onselectstart = returnFalse;
-            this._bgDom.style['-webkit-user-select'] = 'none';
-            this._bgDom.style['user-select'] = 'none';
-            this._bgDom.style['-webkit-touch-callout'] = 'none';
 
             // 高亮
             var hoverLayer = new Layer('_zrender_hover_', this);
@@ -7962,6 +8298,15 @@ define(
             var list = this.storage.getShapeList(true);
             this._paintList(list, paintAll);
 
+            // Paint custum layers
+            for (var i = 0; i < this._zlevelList.length; i++) {
+                var z = this._zlevelList[i];
+                var layer = this._layers[z];
+                if (! layer.isBuildin && layer.refresh) {
+                    layer.refresh();
+                }
+            }
+
             if (typeof callback == 'function') {
                 callback();
             }
@@ -7969,6 +8314,23 @@ define(
             return this;
         };
 
+        Painter.prototype._preProcessLayer = function (layer) {
+            layer.unusedCount++;
+            layer.updateTransform();
+        };
+
+        Painter.prototype._postProcessLayer = function (layer) {
+            layer.dirty = false;
+            // 删除过期的层
+            // PENDING
+            // if (layer.unusedCount >= 500) {
+            //     this.delLayer(z);
+            // }
+            if (layer.unusedCount == 1) {
+                layer.clear();
+            }
+        };
+ 
         Painter.prototype._paintList = function (list, paintAll) {
 
             if (typeof(paintAll) == 'undefined') {
@@ -7981,18 +8343,14 @@ define(
             var currentZLevel;
             var ctx;
 
-            for (var id in this._layers) {
-                if (id !== 'hover') {
-                    this._layers[id].unusedCount++;
-                    this._layers[id].updateTransform();
-                }
-            }
+            this.eachBuildinLayer(this._preProcessLayer);
 
-            var invTransform = [];
+            // var invTransform = [];
 
             for (var i = 0, l = list.length; i < l; i++) {
                 var shape = list[i];
 
+                // Change draw layer
                 if (currentZLevel !== shape.zlevel) {
                     if (currentLayer) {
                         if (currentLayer.needTransform) {
@@ -8001,9 +8359,17 @@ define(
                         ctx.flush && ctx.flush();
                     }
 
-                    currentLayer = this.getLayer(shape.zlevel);
-                    ctx = currentLayer.ctx;
                     currentZLevel = shape.zlevel;
+                    currentLayer = this.getLayer(currentZLevel);
+
+                    if (!currentLayer.isBuildin) {
+                        log(
+                            'ZLevel ' + currentZLevel
+                            + ' has been used by unkown layer ' + currentLayer.id
+                        );
+                    }
+
+                    ctx = currentLayer.ctx;
 
                     // Reset the count
                     currentLayer.unusedCount = 0;
@@ -8015,36 +8381,6 @@ define(
                     if (currentLayer.needTransform) {
                         ctx.save();
                         currentLayer.setTransform(ctx);
-                    }
-                }
-
-                // Start group clipping
-                if (shape.__startClip && !vmlCanvasManager) {
-                    var clipShape = shape.__startClip;
-                    ctx.save();
-                    // Set transform
-                    if (clipShape.needTransform) {
-                        var m = clipShape.transform;
-                        matrix.invert(invTransform, m);
-                        ctx.transform(
-                            m[0], m[1],
-                            m[2], m[3],
-                            m[4], m[5]
-                        );
-                    }
-
-                    ctx.beginPath();
-                    clipShape.buildPath(ctx, clipShape.style);
-                    ctx.clip();
-
-                    // Transform back
-                    if (clipShape.needTransform) {
-                        var m = invTransform;
-                        ctx.transform(
-                            m[0], m[1],
-                            m[2], m[3],
-                            m[4], m[5]
-                        );
                     }
                 }
 
@@ -8071,11 +8407,6 @@ define(
                     }
                 }
 
-                // Stop group clipping
-                if (shape.__stopClip && !vmlCanvasManager) {
-                    ctx.restore();
-                }
-
                 shape.__dirty = false;
             }
 
@@ -8086,77 +8417,111 @@ define(
                 ctx.flush && ctx.flush();
             }
 
-            for (var id in this._layers) {
-                if (id !== 'hover') {
-                    var layer = this._layers[id];
-                    layer.dirty = false;
-                    // 删除过期的层
-                    // PENDING
-                    // if (layer.unusedCount >= 500) {
-                    //     this.delLayer(id);
-                    // }
-                    if (layer.unusedCount == 1) {
-                        layer.clear();
-                    }
-                }
-            }
+            this.eachBuildinLayer(this._postProcessLayer);
         };
 
         /**
          * 获取 zlevel 所在层，如果不存在则会创建一个新的层
          * @param {number} zlevel
+         * @return {module:zrender/Layer}
          */
         Painter.prototype.getLayer = function (zlevel) {
-            // Change draw layer
-            var currentLayer = this._layers[zlevel];
-            if (!currentLayer) {
-                var len = this._zlevelList.length;
-                var prevLayer = null;
-                var i = -1;
-                if (len > 0 && zlevel > this._zlevelList[0]) {
-                    for (i = 0; i < len - 1; i++) {
-                        if (
-                            this._zlevelList[i] < zlevel
-                            && this._zlevelList[i + 1] > zlevel
-                        ) {
-                            break;
-                        }
-                    }
-                    prevLayer = this._layers[this._zlevelList[i]];
-                }
-                this._zlevelList.splice(i + 1, 0, zlevel);
-
+            var layer = this._layers[zlevel];
+            if (!layer) {
                 // Create a new layer
-                currentLayer = new Layer(zlevel, this);
-                var prevDom = prevLayer ? prevLayer.dom : this._bgDom;
-                if (prevDom.nextSibling) {
-                    prevDom.parentNode.insertBefore(
-                        currentLayer.dom,
-                        prevDom.nextSibling
-                    );
-                }
-                else {
-                    prevDom.parentNode.appendChild(
-                        currentLayer.dom
-                    );
-                }
-                currentLayer.initContext();
-                
-                this._layers[zlevel] = currentLayer;
+                layer = new Layer(zlevel, this);
+                layer.isBuildin = true;
 
                 if (this._layerConfig[zlevel]) {
-                    util.merge(currentLayer, this._layerConfig[zlevel], true);
+                    util.merge(layer, this._layerConfig[zlevel], true);
                 }
 
-                currentLayer.updateTransform();
+                layer.updateTransform();
+
+                this.insertLayer(zlevel, layer);
+
+                // Context is created after dom inserted to document
+                // Or excanvas will get 0px clientWidth and clientHeight
+                layer.initContext();
             }
 
-            return currentLayer;
+            return layer;
+        };
+
+        Painter.prototype.insertLayer = function (zlevel, layer) {
+            if (this._layers[zlevel]) {
+                log('ZLevel ' + zlevel + ' has been used already');
+                return;
+            }
+            // Check if is a valid layer
+            if (!isLayerValid(layer)) {
+                log('Layer of zlevel ' + zlevel + ' is not valid');
+                return;
+            }
+
+            var len = this._zlevelList.length;
+            var prevLayer = null;
+            var i = -1;
+            if (len > 0 && zlevel > this._zlevelList[0]) {
+                for (i = 0; i < len - 1; i++) {
+                    if (
+                        this._zlevelList[i] < zlevel
+                        && this._zlevelList[i + 1] > zlevel
+                    ) {
+                        break;
+                    }
+                }
+                prevLayer = this._layers[this._zlevelList[i]];
+            }
+            this._zlevelList.splice(i + 1, 0, zlevel);
+
+            var prevDom = prevLayer ? prevLayer.dom : this._bgDom;
+            if (prevDom.nextSibling) {
+                prevDom.parentNode.insertBefore(
+                    layer.dom,
+                    prevDom.nextSibling
+                );
+            }
+            else {
+                prevDom.parentNode.appendChild(layer.dom);
+            }
+
+            this._layers[zlevel] = layer;
+        };
+
+        // Iterate each layer
+        Painter.prototype.eachLayer = function (cb, context) {
+            for (var i = 0; i < this._zlevelList.length; i++) {
+                var z = this._zlevelList[i];
+                cb.call(context, this._layers[z], z);
+            }
+        };
+
+        // Iterate each buildin layer
+        Painter.prototype.eachBuildinLayer = function (cb, context) {
+            for (var i = 0; i < this._zlevelList.length; i++) {
+                var z = this._zlevelList[i];
+                var layer = this._layers[z];
+                if (layer.isBuildin) {
+                    cb.call(context, layer, z);
+                }
+            }
+        };
+
+        // Iterate each other layer except buildin layer
+        Painter.prototype.eachOtherLayer = function (cb, context) {
+            for (var i = 0; i < this._zlevelList.length; i++) {
+                var z = this._zlevelList[i];
+                var layer = this._layers[z];
+                if (! layer.isBuildin) {
+                    cb.call(context, layer, z);
+                }
+            }
         };
 
         /**
          * 获取所有已创建的层
-         * @param {Array.<module:zrender/Painter~Layer>} [prevLayer]
+         * @param {Array.<module:zrender/Layer>} [prevLayer]
          */
         Painter.prototype.getLayers = function () {
             return this._layers;
@@ -8167,12 +8532,11 @@ define(
             var layers = this._layers;
 
             var elCounts = {};
-            for (var z in layers) {
-                if (z !== 'hover') {
-                    elCounts[z] = layers[z].elCount;
-                    layers[z].elCount = 0;
-                }
-            }
+
+            this.eachBuildinLayer(function (layer, z) {
+                elCounts[z] = layer.elCount;
+                layer.elCount = 0;
+            });
 
             for (var i = 0, l = list.length; i < l; i++) {
                 var shape = list[i];
@@ -8189,13 +8553,11 @@ define(
             }
 
             // 层中的元素数量有发生变化
-            for (var z in layers) {
-                if (z !== 'hover') {
-                    if (elCounts[z] !== layers[z].elCount) {
-                        layers[z].dirty = true;
-                    }
+            this.eachBuildinLayer(function (layer, z) {
+                if (elCounts[z] !== layer.elCount) {
+                    layer.dirty = true;
                 }
-            }
+            });
         };
 
         /**
@@ -8228,14 +8590,12 @@ define(
          * 清除hover层外所有内容
          */
         Painter.prototype.clear = function () {
-            for (var k in this._layers) {
-                if (k == 'hover') {
-                    continue;
-                }
-                this._layers[k].clear();
-            }
-
+            this.eachBuildinLayer(this._clearLayer);
             return this;
+        };
+
+        Painter.prototype._clearLayer = function (layer) {
+            layer.clear();
         };
 
         /**
@@ -8420,27 +8780,21 @@ define(
          * @return {string} 图片的Base64 url
          */
         Painter.prototype.toDataURL = function (type, backgroundColor, args) {
-            if (vmlCanvasManager) {
+            if (window['G_vmlCanvasManager']) {
                 return null;
             }
 
-            var imageDom = createDom('image', 'canvas', this);
-            this._bgDom.appendChild(imageDom);
-            var ctx = imageDom.getContext('2d');
-            devicePixelRatio != 1 
-                && ctx.scale(devicePixelRatio, devicePixelRatio);
+            var imageLayer = new Layer('image', this);
+            this._bgDom.appendChild(imageLayer.dom);
+            imageLayer.initContext();
             
-            ctx.fillStyle = backgroundColor || '#fff';
-            ctx.rect(
-                0, 0, 
-                this._width * devicePixelRatio,
-                this._height * devicePixelRatio
-            );
-            ctx.fill();
+            var ctx = imageLayer.ctx;
+            imageLayer.clearColor = backgroundColor || '#fff';
+            imageLayer.clear();
             
             var self = this;
             // 升序遍历，shape上的zlevel指定绘画图层的z轴层叠
-            
+
             this.storage.iterShape(
                 function (shape) {
                     if (!shape.invisible) {
@@ -8468,9 +8822,9 @@ define(
                 },
                 { normal: 'up', update: true }
             );
-            var image = imageDom.toDataURL(type, args); 
+            var image = imageLayer.dom.toDataURL(type, args); 
             ctx = null;
-            this._bgDom.removeChild(imageDom);
+            this._bgDom.removeChild(imageLayer.dom);
             return image;
         };
 
@@ -8545,7 +8899,6 @@ define(
         ) {
             var canvas = document.createElement('canvas');
             var ctx = canvas.getContext('2d');
-            var devicePixelRatio = window.devicePixelRatio || 1;
             
             canvas.style.width = width + 'px';
             canvas.style.height = height + 'px';
@@ -8592,7 +8945,7 @@ define(
         };
 
         Painter.prototype._createShapeToImageProcessor = function () {
-            if (vmlCanvasManager) {
+            if (window['G_vmlCanvasManager']) {
                 return doNothing;
             }
 
@@ -8600,207 +8953,10 @@ define(
 
             return function (id, e, width, height) {
                 return me._shapeToImage(
-                    id, e, width, height, devicePixelRatio
+                    id, e, width, height, config.devicePixelRatio
                 );
             };
         };
-
-        /**
-         * 创建dom
-         * 
-         * @inner
-         * @param {string} id dom id 待用
-         * @param {string} type dom type，such as canvas, div etc.
-         * @param {Painter} painter painter instance
-         */
-        function createDom(id, type, painter) {
-            var newDom = document.createElement(type);
-            var width = painter._width;
-            var height = painter._height;
-
-            // 没append呢，请原谅我这样写，清晰~
-            newDom.style.position = 'absolute';
-            newDom.style.left = 0;
-            newDom.style.top = 0;
-            newDom.style.width = width + 'px';
-            newDom.style.height = height + 'px';
-            newDom.setAttribute('width', width * devicePixelRatio);
-            newDom.setAttribute('height', height * devicePixelRatio);
-
-            // id不作为索引用，避免可能造成的重名，定义为私有属性
-            newDom.setAttribute('data-zr-dom-id', id);
-            return newDom;
-        }
-
-        /**
-         * @alias module:zrender/Painter~Layer
-         * @constructor
-         * @extends module:zrender/mixin/Transformable
-         * @param {string} id
-         * @param {module:zrender/Painter} painter
-         */
-        var Layer = function(id, painter) {
-            this.dom = createDom(id, 'canvas', painter);
-            this.dom.onselectstart = returnFalse; // 避免页面选中的尴尬
-            this.dom.style['-webkit-user-select'] = 'none';
-            this.dom.style['user-select'] = 'none';
-            this.dom.style['-webkit-touch-callout'] = 'none';
-
-            vmlCanvasManager && vmlCanvasManager.initElement(this.dom);
-
-            this.domBack = null;
-            this.ctxBack = null;
-
-            this.painter = painter;
-
-            this.unusedCount = 0;
-
-            this.config = null;
-
-            this.dirty = true;
-
-            this.elCount = 0;
-
-            // Configs
-            /**
-             * 每次清空画布的颜色
-             * @type {string}
-             * @default 0
-             */
-            this.clearColor = 0;
-            /**
-             * 是否开启动态模糊
-             * @type {boolean}
-             * @default false
-             */
-            this.motionBlur = false;
-            /**
-             * 在开启动态模糊的时候使用，与上一帧混合的alpha值，值越大尾迹越明显
-             * @type {number}
-             * @default 0.7
-             */
-            this.lastFrameAlpha = 0.7;
-            /**
-             * 层是否支持鼠标平移操作
-             * @type {boolean}
-             * @default false
-             */
-            this.zoomable = false;
-            /**
-             * 层是否支持鼠标缩放操作
-             * @type {boolean}
-             * @default false
-             */
-            this.panable = false;
-
-            this.maxZoom = Infinity;
-            this.minZoom = 0;
-
-            Transformable.call(this);
-        };
-
-        Layer.prototype.initContext = function () {
-            this.ctx = this.dom.getContext('2d');
-            if (devicePixelRatio != 1) { 
-                this.ctx.scale(devicePixelRatio, devicePixelRatio);
-            }
-        };
-
-        Layer.prototype.createBackBuffer = function () {
-            if (vmlCanvasManager) { // IE 8- should not support back buffer
-                return;
-            }
-            this.domBack = createDom('back-' + this.id, 'canvas', this.painter);
-            this.ctxBack = this.domBack.getContext('2d');
-
-            if (devicePixelRatio != 1) { 
-                this.ctxBack.scale(devicePixelRatio, devicePixelRatio);
-            }
-        };
-
-        /**
-         * @param  {number} width
-         * @param  {number} height
-         */
-        Layer.prototype.resize = function (width, height) {
-            this.dom.style.width = width + 'px';
-            this.dom.style.height = height + 'px';
-
-            this.dom.setAttribute('width', width * devicePixelRatio);
-            this.dom.setAttribute('height', height * devicePixelRatio);
-
-            if (devicePixelRatio != 1) { 
-                this.ctx.scale(devicePixelRatio, devicePixelRatio);
-            }
-
-            if (this.domBack) {
-                this.domBack.setAttribute('width', width * devicePixelRatio);
-                this.domBack.setAttribute('height', height * devicePixelRatio);
-
-                if (devicePixelRatio != 1) { 
-                    this.ctxBack.scale(devicePixelRatio, devicePixelRatio);
-                }
-            }
-        };
-
-        /**
-         * 清空该层画布
-         */
-        Layer.prototype.clear = function () {
-            var dom = this.dom;
-            var ctx = this.ctx;
-            var width = dom.width;
-            var height = dom.height;
-
-            var haveClearColor = this.clearColor && !vmlCanvasManager;
-            var haveMotionBLur = this.motionBlur && !vmlCanvasManager;
-            var lastFrameAlpha = this.lastFrameAlpha;
-
-            if (haveMotionBLur) {
-                if (!this.domBack) {
-                    this.createBackBuffer();
-                } 
-
-                this.ctxBack.globalCompositeOperation = 'copy';
-                this.ctxBack.drawImage(
-                    dom, 0, 0,
-                    width / devicePixelRatio,
-                    height / devicePixelRatio
-                );
-            }
-
-            if (haveClearColor) {
-                ctx.save();
-                ctx.fillStyle = this.config.clearColor;
-                ctx.fillRect(
-                    0, 0,
-                    width / devicePixelRatio, 
-                    height / devicePixelRatio
-                );
-                ctx.restore();
-            }
-            else {
-                ctx.clearRect(
-                    0, 0, 
-                    width / devicePixelRatio,
-                    height / devicePixelRatio
-                );
-            }
-
-            if (haveMotionBLur) {
-                var domBack = this.domBack;
-                ctx.save();
-                ctx.globalAlpha = lastFrameAlpha;
-                ctx.drawImage(
-                    domBack, 0, 0,
-                    width / devicePixelRatio,
-                    height / devicePixelRatio
-                );
-                ctx.restore();
-            }
-        };
-
-        util.merge(Layer.prototype, Transformable.prototype);
 
         return Painter;
     }
@@ -8939,7 +9095,9 @@ define('zrender/Group',['require','./tool/guid','./tool/util','./mixin/Transform
     Group.prototype.removeChild = function(child) {
         var idx = util.indexOf(this._children, child);
 
-        this._children.splice(idx, 1);
+        if (idx >= 0) {
+            this._children.splice(idx, 1);
+        }
         child.parent = null;
 
         if (this._storage) {
@@ -8950,6 +9108,22 @@ define('zrender/Group',['require','./tool/guid','./tool/util','./mixin/Transform
                 child.delChildrenFromStorage(this._storage);
             }
         }
+    };
+
+    /**
+     * 移除所有子节点
+     */
+    Group.prototype.clearChildren = function () {
+        for (var i = 0; i < this._children.length; i++) {
+            var child = this._children[i];
+            if (this._storage) {
+                this._storage.delFromMap(child.id);
+                if (child instanceof Group) {
+                    child.delChildrenFromStorage(this._storage);
+                }
+            }
+        }
+        this._children.length = 0;
     };
 
     /**
@@ -8994,7 +9168,7 @@ define('zrender/Group',['require','./tool/guid','./tool/util','./mixin/Transform
         for (var i = 0; i < this._children.length; i++) {
             var child = this._children[i];
             storage.addToMap(child);
-            if (child.type === 'group') {
+            if (child instanceof Group) {
                 child.addChildrenToStorage(storage);
             }
         }
@@ -9004,7 +9178,7 @@ define('zrender/Group',['require','./tool/guid','./tool/util','./mixin/Transform
         for (var i = 0; i < this._children.length; i++) {
             var child = this._children[i];
             storage.delFromMap(child.id);
-            if (child.type === 'group') {
+            if (child instanceof Group) {
                 child.delChildrenFromStorage(storage);
             }
         }
@@ -9196,22 +9370,22 @@ define(
 
             el.updateTransform();
 
+            if (el.clipShape) {
+                // clipShape 的变换是基于 group 的变换
+                el.clipShape.parent = el;
+                el.clipShape.updateTransform();
+
+                // PENDING 效率影响
+                if (clipShapes) {
+                    clipShapes = clipShapes.slice();
+                    clipShapes.push(el.clipShape);
+                } else {
+                    clipShapes = [el.clipShape];
+                }
+            }
+
             if (el.type == 'group') {
                 
-                if (el.clipShape) {
-                    // clipShape 的变换是基于 group 的变换
-                    el.clipShape.parent = el;
-                    el.clipShape.updateTransform();
-
-                    // PENDING 效率影响
-                    if (clipShapes) {
-                        clipShapes = clipShapes.slice();
-                        clipShapes.push(el.clipShape);
-                    } else {
-                        clipShapes = [el.clipShape];
-                    }
-                }
-
                 for (var i = 0; i < el._children.length; i++) {
                     var child = el._children[i];
 
@@ -9235,26 +9409,28 @@ define(
         /**
          * 修改图形(Shape)或者组(Group)
          * 
-         * @param {string} elId 唯一标识
+         * @param {string|module:zrender/shape/Base|module:zrender/Group} el
          * @param {Object} [params] 参数
          */
-        Storage.prototype.mod = function (elId, params) {
-            var el = this._elements[elId];
+        Storage.prototype.mod = function (el, params) {
+            if (typeof (el) === 'string') {
+                el = this._elements[el];
+            }
             if (el) {
 
                 el.modSelf();
 
                 if (params) {
                     // 如果第二个参数直接使用 shape
-                    // parent, _storage, __startClip 三个属性会有循环引用
+                    // parent, _storage, __clipShapes 三个属性会有循环引用
                     // 主要为了向 1.x 版本兼容，2.x 版本不建议使用第二个参数
-                    if (params.parent || params._storage || params.__startClip) {
+                    if (params.parent || params._storage || params.__clipShapes) {
                         var target = {};
                         for (var name in params) {
                             if (
-                                name == 'parent'
-                                || name == '_storage'
-                                || name == '__startClip'
+                                name === 'parent'
+                                || name === '_storage'
+                                || name === '__clipShapes'
                             ) {
                                 continue;
                             }
@@ -9332,6 +9508,11 @@ define(
          * @param {module:zrender/shape/Shape|module:zrender/Group} el
          */
         Storage.prototype.addRoot = function (el) {
+            // Element has been added
+            if (this._elements[el.id]) {
+                return;
+            }
+
             if (el instanceof Group) {
                 el.addChildrenToStorage(this);
             }
@@ -9342,7 +9523,7 @@ define(
 
         /**
          * 删除指定的图形(Shape)或者组(Group)
-         * @param  {string|Array.<string>} [elId] 如果为空清空整个Storage
+         * @param {string|Array.<string>} [elId] 如果为空清空整个Storage
          */
         Storage.prototype.delRoot = function (elId) {
             if (typeof(elId) == 'undefined') {
@@ -9415,7 +9596,6 @@ define(
 
             return this;
         };
-
 
         /**
          * 清空并且释放Storage
@@ -9859,7 +10039,7 @@ define(
                     
                     // 动画完成将这个控制器标识为待删除
                     // 在Animation.update中进行批量删除
-                    this._needsRemove = true;
+                    this.__needsRemove = true;
                     return 'destroy';
                 }
                 
@@ -9870,7 +10050,7 @@ define(
                 var remainder = (time - this._startTime) % this._life;
                 this._startTime = new Date().getTime() - remainder + this.gap;
 
-                this._needsRemove = false;
+                this.__needsRemove = false;
             },
             fire : function(eventType, arg) {
                 for (var i = 0, len = this._targetPool.length; i < len; i++) {
@@ -9971,9 +10151,16 @@ define(
              * @param {module:zrender/animation/Clip} clip
              */
             remove: function(clip) {
-                var idx = util.indexOf(this._clips, clip);
-                if (idx >= 0) {
-                    this._clips.splice(idx, 1);
+                if (clip.__inStep) {
+                    // 如果是在 step 中，不能直接移除
+                    // 需要标记为 needsRemove 然后在所有 clip step 完成后移除
+                    clip.__needsRemove = true;
+                }
+                else {
+                    var idx = util.indexOf(this._clips, clip);
+                    if (idx >= 0) {
+                        this._clips.splice(idx, 1);
+                    }
                 }
             },
             _update: function() {
@@ -9987,7 +10174,9 @@ define(
                 var deferredClips = [];
                 for (var i = 0; i < len; i++) {
                     var clip = clips[i];
+                    clip.__inStep = true;
                     var e = clip.step(time);
+                    clip.__inStep = false;
                     // Throw out the events need to be called after
                     // stage.update, like destroy
                     if (e) {
@@ -9995,13 +10184,10 @@ define(
                         deferredClips.push(clip);
                     }
                 }
-                if (this.stage.update) {
-                    this.stage.update();
-                }
 
                 // Remove the finished clip
                 for (var i = 0; i < len;) {
-                    if (clips[i]._needsRemove) {
+                    if (clips[i].__needsRemove) {
                         clips[i] = clips[len - 1];
                         clips.pop();
                         len--;
@@ -10021,6 +10207,10 @@ define(
                 this.onframe(delta);
 
                 this.dispatch('frame', delta);
+
+                if (this.stage.update) {
+                    this.stage.update();
+                }
             },
             /**
              * 开始运行动画
@@ -10032,8 +10222,10 @@ define(
 
                 function step() {
                     if (self._running) {
-                        self._update();
+                        
                         requestAnimationFrame(step);
+
+                        self._update();
                     }
                 }
 
@@ -10537,13 +10729,13 @@ define(
         /**
          * @type {string}
          */
-        zrender.version = '2.0.6';
+        zrender.version = '2.1.1';
 
         /**
          * 创建zrender实例
          *
          * @param {HTMLElement} dom 绘图容器
-         * @return {module:zrender~ZRender} ZRender实例
+         * @return {module:zrender/ZRender} ZRender实例
          */
         // 不让外部直接new ZRender实例，为啥？
         // 不为啥，提供全局可控同时减少全局污染和降低命名冲突的风险！
@@ -10555,7 +10747,7 @@ define(
 
         /**
          * zrender实例销毁
-         * @param {module:zrender~ZRender} zr ZRender对象，不传则销毁全部
+         * @param {module:zrender/ZRender} zr ZRender对象，不传则销毁全部
          */
         // 在_instances里的索引也会删除了
         // 管生就得管死，可以通过zrender.dispose(zr)销毁指定ZRender实例
@@ -10577,7 +10769,7 @@ define(
         /**
          * 获取zrender实例
          * @param {string} id ZRender对象索引
-         * @return {module:zrender~ZRender}
+         * @return {module:zrender/ZRender}
          */
         zrender.getInstance = function (id) {
             return _instances[id];
@@ -10599,23 +10791,21 @@ define(
 
         function getFrameCallback(zrInstance) {
             return function () {
-                var animatingElements = zrInstance.animatingElements;
-                for (var i = 0, l = animatingElements.length; i < l; i++) {
-                    zrInstance.storage.mod(animatingElements[i].id);
-                }
-
-                if (animatingElements.length || zrInstance._needsRefreshNextFrame) {
+                if (zrInstance._needsRefreshNextFrame) {
                     zrInstance.refresh();
                 }
             };
         }
 
         /**
+         * @module zrender/ZRender
+         */
+        /**
          * ZRender接口类，对外可用的所有接口都在这里
          * 非get接口统一返回支持链式调用
          *
          * @constructor
-         * @alias module:zrender~ZRender
+         * @alias module:zrender/ZRender
          * @param {string} id 唯一标识
          * @param {HTMLElement} dom dom对象，不帮你做document.getElementById
          * @return {ZRender} ZRender实例
@@ -10632,8 +10822,6 @@ define(
             this.painter = new Painter(dom, this.storage);
             this.handler = new Handler(dom, this.storage, this.painter);
 
-            // 动画控制
-            this.animatingElements = [];
             /**
              * @type {module:zrender/animation/Animation}
              */
@@ -10650,6 +10838,17 @@ define(
             };
 
             this._needsRefreshNextFrame = false;
+
+            // 修改 storage.delFromMap, 每次删除元素之前删除动画
+            // FIXME 有点ugly
+            var self = this;
+            var storage = this.storage;
+            var oldDelFromMap = storage.delFromMap;
+            storage.delFromMap = function (elId) {
+                var el = storage.get(elId);
+                self.stopAnimation(el);
+                oldDelFromMap.call(storage, elId);
+            };
         };
 
         /**
@@ -10662,63 +10861,100 @@ define(
 
         /**
          * 添加图形形状到根节点
-         * 
+         * @deprecated Use {@link module:zrender/ZRender.prototype.addElement} instead
          * @param {module:zrender/shape/Base} shape 形状对象，可用属性全集，详见各shape
          */
         ZRender.prototype.addShape = function (shape) {
-            this.storage.addRoot(shape);
+            this.addElement(shape);
             return this;
         };
 
         /**
          * 添加组到根节点
-         *
+         * @deprecated Use {@link module:zrender/ZRender.prototype.addElement} instead
          * @param {module:zrender/Group} group
          */
         ZRender.prototype.addGroup = function(group) {
-            this.storage.addRoot(group);
+            this.addElement(group);
             return this;
         };
 
         /**
          * 从根节点删除图形形状
-         * 
+         * @deprecated Use {@link module:zrender/ZRender.prototype.delElement} instead
          * @param {string} shapeId 形状对象唯一标识
          */
         ZRender.prototype.delShape = function (shapeId) {
-            this.storage.delRoot(shapeId);
+            this.delElement(shapeId);
             return this;
         };
 
         /**
          * 从根节点删除组
-         * 
+         * @deprecated Use {@link module:zrender/ZRender.prototype.delElement} instead
          * @param {string} groupId
          */
         ZRender.prototype.delGroup = function (groupId) {
-            this.storage.delRoot(groupId);
+            this.delElement(groupId);
             return this;
         };
 
         /**
          * 修改图形形状
-         * 
+         * @deprecated Use {@link module:zrender/ZRender.prototype.modElement} instead
          * @param {string} shapeId 形状对象唯一标识
          * @param {Object} shape 形状对象
          */
         ZRender.prototype.modShape = function (shapeId, shape) {
-            this.storage.mod(shapeId, shape);
+            this.modElement(shapeId, shape);
             return this;
         };
 
         /**
          * 修改组
-         * 
+         * @deprecated Use {@link module:zrender/ZRender.prototype.modElement} instead
          * @param {string} groupId
          * @param {Object} group
          */
         ZRender.prototype.modGroup = function (groupId, group) {
-            this.storage.mod(groupId, group);
+            this.modElement(groupId, group);
+            return this;
+        };
+
+        /**
+         * 添加元素
+         * @param  {string|module:zrender/Group|module:zrender/shape/Base} el
+         */
+        ZRender.prototype.addElement = function (el) {
+            this.storage.addRoot(el);
+            this._needsRefreshNextFrame = true;
+            return this;
+        };
+
+        /**
+         * 删除元素
+         * @param  {string|module:zrender/Group|module:zrender/shape/Base} el
+         */
+        ZRender.prototype.delElement = function (el) {
+            this.storage.delRoot(el);
+            this._needsRefreshNextFrame = true;
+            return this;
+        };
+
+        /**
+         * 修改元素, 主要标记图形或者组需要在下一帧刷新。
+         * 第二个参数为需要覆盖到元素上的参数，不建议使用。
+         *
+         * @example
+         *     el.style.color = 'red';
+         *     el.position = [10, 10];
+         *     zr.modElement(el);
+         * @param  {string|module:zrender/Group|module:zrender/shape/Base} el
+         * @param {Object} [params]
+         */
+        ZRender.prototype.modElement = function (el, params) {
+            this.storage.mod(el, params);
+            this._needsRefreshNextFrame = true;
             return this;
         };
 
@@ -10739,6 +10975,7 @@ define(
          */
         ZRender.prototype.modLayer = function (zLevel, config) {
             this.painter.modLayer(zLevel, config);
+            this._needsRefreshNextFrame = true;
             return this;
         };
 
@@ -10824,6 +11061,8 @@ define(
          *         .start()
          */
         ZRender.prototype.animate = function (el, path, loop) {
+            var self = this;
+
             if (typeof(el) === 'string') {
                 el = this.storage.get(el);
             }
@@ -10856,25 +11095,25 @@ define(
                     return;
                 }
 
-                var animatingElements = this.animatingElements;
-                if (typeof el.__aniCount === 'undefined') {
+                if (el.__animators == null) {
                     // 正在进行的动画记数
-                    el.__aniCount = 0;
+                    el.__animators = [];
                 }
-                if (el.__aniCount === 0) {
-                    animatingElements.push(el);
-                }
-                el.__aniCount++;
+                var animators = el.__animators;
 
-                return this.animation.animate(target, { loop: loop })
+                var animator = this.animation.animate(target, { loop: loop })
+                    .during(function () {
+                        self.modShape(el);
+                    })
                     .done(function () {
-                        el.__aniCount--;
-                        if (el.__aniCount === 0) {
-                            // 从animatingElements里移除
-                            var idx = util.indexOf(animatingElements, el);
-                            animatingElements.splice(idx, 1);
+                        var idx = util.indexOf(el.__animators, animator);
+                        if (idx >= 0) {
+                            animators.splice(idx, 1);
                         }
                     });
+                animators.push(animator);
+
+                return animator;
             }
             else {
                 log('Element not existed');
@@ -10882,10 +11121,27 @@ define(
         };
 
         /**
+         * 停止动画对象的动画
+         * @param  {string|module:zrender/Group|module:zrender/shape/Base} el
+         */
+        ZRender.prototype.stopAnimation = function (el) {
+            if (el.__animators) {
+                var animators = el.__animators;
+                var len = animators.length;
+                for (var i = 0; i < len; i++) {
+                    animators[i].stop();
+                }
+                animators.length = 0;
+            }
+            return this;
+        };
+
+        /**
          * 停止所有动画
          */
         ZRender.prototype.clearAnimation = function () {
             this.animation.clear();
+            return this;
         };
 
         /**
@@ -10946,9 +11202,10 @@ define(
          * 
          * @param {string} eventName 事件名称
          * @param {Function} eventHandler 响应函数
+         * @param {Object} [context] 响应函数
          */
-        ZRender.prototype.on = function(eventName, eventHandler) {
-            this.handler.on(eventName, eventHandler);
+        ZRender.prototype.on = function(eventName, eventHandler, context) {
+            this.handler.on(eventName, eventHandler, context);
             return this;
         };
 
@@ -10996,7 +11253,6 @@ define(
             this.handler.dispose();
 
             this.animation = 
-            this.animatingElements = 
             this.storage = 
             this.painter = 
             this.handler = null;
@@ -11469,6 +11725,8 @@ define(
              * @param {module:zrender/shape/Circle~ICircleStyle} style
              */
             buildPath : function (ctx, style) {
+                // Better stroking in ShapeBundle
+                ctx.moveTo(style.x + style.r, style.y);
                 ctx.arc(style.x, style.y, style.r, 0, Math.PI * 2, true);
                 return;
             },
@@ -11647,6 +11905,15 @@ define(
         var computeArcBoundingBox = function (
             x, y, r, startAngle, endAngle, anticlockwise, min, max
         ) { 
+            if (Math.abs(startAngle - endAngle) >= Math.PI * 2) {
+                // Is a circle
+                min[0] = x - r;
+                min[1] = y - r;
+                max[0] = x + r;
+                max[1] = y + r;
+                return;
+            }
+
             start[0] = Math.cos(startAngle) * r + x;
             start[1] = Math.sin(startAngle) * r + y;
 
@@ -12430,12 +12697,12 @@ define('zrender/shape/util/PathProxy',['require','../../tool/vector'],function (
  *                                可以是top, bottom, middle, alphabetic, hanging, ideographic
  */
 define(
-    'zrender/shape/Heart',['require','./Base','./util/PathProxy','zrender/tool/area','../tool/util'],function (require) {
+    'zrender/shape/Heart',['require','./Base','./util/PathProxy','../tool/area','../tool/util'],function (require) {
         
         
         var Base = require('./Base');
         var PathProxy = require('./util/PathProxy');
-        var area = require('zrender/tool/area');
+        var area = require('../tool/area');
         
         /**
          * @alias module:zrender/shape/Heart
@@ -12508,16 +12775,11 @@ define(
             },
 
             isCover: function (x, y) {
-                var originPos = this.getTansform(x, y);
+                var originPos = this.transformCoordToLocal(x, y);
                 x = originPos[0];
                 y = originPos[1];
                 
-                var rect = this.getRect(this.style);
-                if (x >= rect.x
-                    && x <= (rect.x + rect.width)
-                    && y >= rect.y
-                    && y <= (rect.y + rect.height)
-                ) {
+                if (this.isCoverRect(x, y)) {
                     return area.isInsidePath(
                         this._pathProxy.pathCommands, this.style.lineWidth, this.style.brushType, x, y
                     );
@@ -12578,12 +12840,12 @@ define(
  *                                可以是top, bottom, middle, alphabetic, hanging, ideographic
  */
 define(
-    'zrender/shape/Droplet',['require','./Base','./util/PathProxy','zrender/tool/area','../tool/util'],function (require) {
+    'zrender/shape/Droplet',['require','./Base','./util/PathProxy','../tool/area','../tool/util'],function (require) {
         
 
         var Base = require('./Base');
         var PathProxy = require('./util/PathProxy');
-        var area = require('zrender/tool/area');
+        var area = require('../tool/area');
 
         /**
          * @alias module:zrender/shape/Droplet
@@ -12654,16 +12916,11 @@ define(
             },
 
             isCover: function (x, y) {
-                var originPos = this.getTansform(x, y);
+                var originPos = this.transformCoordToLocal(x, y);
                 x = originPos[0];
                 y = originPos[1];
                 
-                var rect = this.getRect(this.style);
-                if (x >= rect.x
-                    && x <= (rect.x + rect.width)
-                    && y >= rect.y
-                    && y <= (rect.y + rect.height)
-                ) {
+                if (this.isCoverRect(x, y)) {
                     return area.isInsidePath(
                         this._pathProxy.pathCommands, this.style.lineWidth, this.style.brushType, x, y
                     );
@@ -13432,7 +13689,7 @@ define(
                 } 
                 else {
                     if (i === 0 || i === len - 1) {
-                        cps.push(points[i]);
+                        cps.push(vector.clone(points[i]));
                         continue;
                     } 
                     else {
@@ -13469,7 +13726,7 @@ define(
             }
             
             if (isLoop) {
-                cps.push(cps.shift());
+                cps.push(vector.clone(cps.shift()));
             }
 
             return cps;
@@ -13547,68 +13804,6 @@ define(
         Polygon.prototype = {
             type: 'polygon',
 
-            brush : function (ctx, isHighlight) {
-                var style = this.style;
-                if (isHighlight) {
-                    // 根据style扩展默认高亮样式
-                    style = this.getHighlightStyle(
-                        style,
-                        this.highlightStyle || {}
-                    );
-                }
-
-                ctx.save();
-                this.setContext(ctx, style);
-    
-                // 设置transform
-                this.setTransform(ctx);
-                
-                // 先fill再stroke
-                var hasPath = false;
-                if (style.brushType == 'fill' 
-                    || style.brushType == 'both'
-                    || typeof style.brushType == 'undefined' // 默认为fill
-                ) {
-                    ctx.beginPath();
-                    if (style.lineType == 'dashed' 
-                        || style.lineType == 'dotted'
-                    ) {
-                        // 特殊处理，虚线围不成path，实线再build一次
-                        this.buildPath(
-                            ctx, 
-                            {
-                                lineType: 'solid',
-                                lineWidth: style.lineWidth,
-                                pointList: style.pointList
-                            }
-                        );
-                        hasPath = false; // 这个path不能用
-                    }
-                    else {
-                        this.buildPath(ctx, style);
-                        hasPath = true; // 这个path能用
-                    }
-                    ctx.closePath();
-                    ctx.fill();
-                }
-
-                if (style.lineWidth > 0 
-                    && (style.brushType == 'stroke' || style.brushType == 'both')
-                ) {
-                    if (!hasPath) {
-                        ctx.beginPath();
-                        this.buildPath(ctx, style);
-                    }
-                    ctx.stroke();
-                }
-    
-                this.drawText(ctx, style, this.style);
-    
-                ctx.restore();
-    
-                return;
-            },
-        
             /**
              * 创建多边形路径
              * @param {CanvasRenderingContext2D} ctx
@@ -13695,6 +13890,8 @@ define(
                         );
                     }
                 }
+
+                ctx.closePath();
                 return;
             },
 
@@ -13756,10 +13953,10 @@ define(
 /**
  * 折线
  * @author Kener (@Kener-林峰, kener.linfeng@gmail.com)
- * @module zrender/shape/BrokenLine
+ * @module zrender/shape/Polyline
  * @example
- *     var BrokenLine = require('zrender/shape/BrokenLine');
- *     var shape = new BrokenLine({
+ *     var Polyline = require('zrender/shape/Polyline');
+ *     var shape = new Polyline({
  *         style: {
  *             pointList: [[0, 0], [100, 100], [100, 0]],
  *             smooth: 'bezier',
@@ -13770,9 +13967,9 @@ define(
  */
 
 /**
- * @typedef {Object} IBrokenLineStyle
+ * @typedef {Object} IPolylineStyle
  * @property {Array.<number>} pointList 顶点坐标数组
- * @property {string} [smooth=''] 是否做平滑插值, 平滑算法可以选择 bezier, spline
+ * @property {string|number} [smooth=''] 是否做平滑插值, 平滑算法可以选择 bezier, spline
  * @property {number} [smoothConstraint] 平滑约束
  * @property {string} [strokeColor='#000000'] 描边颜色
  * @property {string} [lineCape='butt'] 线帽样式，可以是 butt, round, square
@@ -13793,41 +13990,41 @@ define(
  *                                可以是top, bottom, middle, alphabetic, hanging, ideographic
  */
 define(
-    'zrender/shape/BrokenLine',['require','./Base','./util/smoothSpline','./util/smoothBezier','./util/dashedLineTo','./Polygon','../tool/util'],function (require) {
+    'zrender/shape/Polyline',['require','./Base','./util/smoothSpline','./util/smoothBezier','./util/dashedLineTo','./Polygon','../tool/util'],function (require) {
         var Base = require('./Base');
         var smoothSpline = require('./util/smoothSpline');
         var smoothBezier = require('./util/smoothBezier');
         var dashedLineTo = require('./util/dashedLineTo');
 
         /**
-         * @alias module:zrender/shape/BrokenLine
+         * @alias module:zrender/shape/Polyline
          * @constructor
          * @extends module:zrender/shape/Base
          * @param {Object} options
          */
-        var BrokenLine = function(options) {
+        var Polyline = function(options) {
             this.brushTypeOnly = 'stroke';  // 线条只能描边，填充后果自负
             this.textPosition = 'end';
             Base.call(this, options);
             /**
              * 贝赛尔曲线绘制样式
-             * @name module:zrender/shape/BrokenLine#style
-             * @type {module:zrender/shape/BrokenLine~IBrokenLineStyle}
+             * @name module:zrender/shape/Polyline#style
+             * @type {module:zrender/shape/Polyline~IPolylineStyle}
              */
             /**
              * 贝赛尔曲线高亮绘制样式
-             * @name module:zrender/shape/BrokenLine#highlightStyle
-             * @type {module:zrender/shape/BrokenLine~IBrokenLineStyle}
+             * @name module:zrender/shape/Polyline#highlightStyle
+             * @type {module:zrender/shape/Polyline~IPolylineStyle}
              */
         };
 
-        BrokenLine.prototype =  {
-            type: 'broken-line',
+        Polyline.prototype =  {
+            type: 'polyline',
 
             /**
              * 创建多边形路径
              * @param {CanvasRenderingContext2D} ctx
-             * @param {module:zrender/shape/BrokenLine~IBrokenLineStyle} style
+             * @param {module:zrender/shape/Polyline~IPolylineStyle} style
              */
             buildPath : function(ctx, style) {
                 var pointList = style.pointList;
@@ -13842,23 +14039,24 @@ define(
                 );
                 
                 if (style.smooth && style.smooth !== 'spline') {
-                    var controlPoints = smoothBezier(
-                        pointList, style.smooth, false, style.smoothConstraint
-                    );
+                    if (! style.controlPointList) {
+                        this.updateControlPoints(style);
+                    }
+                    var controlPointList = style.controlPointList;
 
                     ctx.moveTo(pointList[0][0], pointList[0][1]);
                     var cp1;
                     var cp2;
                     var p;
                     for (var i = 0; i < len - 1; i++) {
-                        cp1 = controlPoints[i * 2];
-                        cp2 = controlPoints[i * 2 + 1];
+                        cp1 = controlPointList[i * 2];
+                        cp2 = controlPointList[i * 2 + 1];
                         p = pointList[i + 1];
                         ctx.bezierCurveTo(
                             cp1[0], cp1[1], cp2[0], cp2[1], p[0], p[1]
                         );
                     }
-                } 
+                }
                 else {
                     if (style.smooth === 'spline') {
                         pointList = smoothSpline(pointList);
@@ -13890,6 +14088,12 @@ define(
                 return;
             },
 
+            updateControlPoints: function (style) {
+                style.controlPointList = smoothBezier(
+                    style.pointList, style.smooth, false, style.smoothConstraint
+                );
+            },
+
             /**
              * 计算返回折线包围盒矩形。
              * @param {IZRenderBezierCurveStyle} style
@@ -13900,8 +14104,8 @@ define(
             }
         };
 
-        require('../tool/util').inherits(BrokenLine, Base);
-        return BrokenLine;
+        require('../tool/util').inherits(Polyline, Base);
+        return Polyline;
     }
 );
 
